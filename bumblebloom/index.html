@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Bumblebloom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+:root {
+  --ink: #1e4423; --muted: #4d6b50; --leaf: #3f8f45; --gold: #a9701f; --card: rgba(255,255,255,.94);
+  --f-display: "Lora", Georgia, serif; --f-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--f-body); color: var(--ink); overflow: hidden;
+  background: repeating-linear-gradient(180deg, rgba(255,255,255,.12) 0 56px, transparent 56px 112px), linear-gradient(180deg, #a8d98a, #6fae5e);
+}
+button { font-family: inherit; }
+h1, h2 { font-family: var(--f-display); margin: 0; text-wrap: balance; }
+.screen { position: fixed; inset: 0; display: none; }
+.screen.on { display: flex; }
+
+/* ---------- home + lobby: a white garden sign on the lawn ---------- */
+#home, #lobby { align-items: center; justify-content: center; padding: 20px; overflow-y: auto; }
+.sign { width: min(460px, 100%); background: var(--card); border-radius: 22px; padding: 26px 24px; box-shadow: 0 14px 40px rgba(30,68,35,.28); display: grid; gap: 16px; position: relative; }
+.sign::before { content: ""; position: absolute; inset: -10px; border-radius: 30px; border: 10px solid transparent; background: linear-gradient(#47a04c, #2f7a3a) border-box; -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; z-index: -1; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand canvas { width: 56px; height: 56px; }
+h1 { font-size: 2.3rem; line-height: 1; }
+.tag { color: var(--muted); font-size: .98rem; margin: 0; }
+label { font-weight: 800; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--leaf); display: grid; gap: 6px; }
+input { font: 700 1.05rem var(--f-body); color: var(--ink); padding: 12px 14px; border-radius: 12px; border: 2px solid #cfe3c4; background: #f7fbf3; width: 100%; min-height: 48px; }
+input:focus { outline: none; border-color: #5fbb56; }
+#code { text-transform: uppercase; letter-spacing: .3em; text-align: center; }
+.btn { min-height: 50px; border: 0; border-radius: 999px; font-weight: 800; font-size: 1rem; cursor: pointer; padding: 0 20px; }
+.btn:focus-visible { outline: 3px solid #f2b23f; outline-offset: 2px; }
+.btn.go { color: #f4fff2; background: linear-gradient(180deg, #5fbb56, #357f3c); box-shadow: 0 4px 0 #24602b; }
+.btn.go:active { transform: translateY(2px); box-shadow: 0 2px 0 #24602b; }
+.btn.alt { color: var(--ink); background: #eef6e6; border: 2px solid #cfe3c4; }
+.btn.honey { color: #4a3a1e; background: linear-gradient(180deg, #ffd873, #f2b23f); box-shadow: 0 4px 0 #b9842a; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+.or { text-align: center; color: var(--muted); font-size: .85rem; font-weight: 700; }
+.err { color: #b3261e; font-weight: 700; font-size: .92rem; min-height: 1.2em; margin: 0; }
+.small { color: var(--muted); font-size: .85rem; margin: 0; }
+.small a { color: var(--leaf); font-weight: 800; }
+
+.codebox { text-align: center; display: grid; gap: 2px; }
+.codebox b { font: 800 2.6rem/1.1 var(--f-body); letter-spacing: .25em; color: var(--gold); padding-left: .25em; }
+.bees { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: #f3f8ee; font-weight: 700; min-width: 0; }
+.chip i { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: inset 0 -2px 0 rgba(0,0,0,.2); }
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip em { font-style: normal; font-size: .75rem; color: var(--muted); margin-left: auto; }
+.chip.empty { border: 2px dashed #cfe3c4; background: transparent; color: #9fb39f; }
+.stepper { display: flex; align-items: center; gap: 12px; justify-content: space-between; background: #f3f8ee; border-radius: 14px; padding: 8px 12px; font-weight: 700; }
+.stepper button { width: 44px; height: 44px; border-radius: 50%; border: 0; font-size: 1.4rem; font-weight: 800; background: #fff; color: var(--ink); box-shadow: 0 2px 6px rgba(0,0,0,.12); cursor: pointer; }
+.stepper b { min-width: 2ch; text-align: center; font-size: 1.2rem; }
+
+/* ---------- game ---------- */
+#game { flex-direction: column; background: #6fae5e; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.hud { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0; pointer-events: none; }
+.card { background: var(--card); border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.16); padding: 8px 12px; }
+#me { display: grid; gap: 4px; min-width: 150px; }
+#me .top { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+#me .top i { width: 14px; height: 14px; border-radius: 50%; }
+.hp { height: 10px; border-radius: 6px; background: #e4ecdc; overflow: hidden; }
+.hp div { height: 100%; width: 100%; border-radius: 6px; background: #4fae52; transition: width .2s, background .2s; }
+#honey { font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+#clock { font: 800 1.15rem var(--f-body); font-variant-numeric: tabular-nums; padding: 8px 16px; border-radius: 999px; }
+#clock.low { color: #c03a3a; }
+#board { display: grid; gap: 2px; min-width: 150px; font-size: .85rem; }
+#board div { display: flex; gap: 6px; align-items: center; font-weight: 700; }
+#board i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#board span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#board b { color: var(--gold); font-variant-numeric: tabular-nums; }
+#board em { font-style: normal; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#board .hd { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }
+#mystats { font-size: .8rem; color: var(--muted); font-weight: 700; line-height: 1.35; }
+#mystats b { color: var(--ink); }
+#mystats .rate { color: var(--gold); font-weight: 800; font-size: .95rem; }
+#helpbtn { pointer-events: auto; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.16); font: 800 1.2rem var(--f-body); color: var(--ink); cursor: pointer; }
+#help { position: absolute; left: 12px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); width: min(330px, calc(100vw - 24px)); display: none; gap: 8px; pointer-events: auto; }
+#help.on { display: grid; }
+#help h3 { margin: 0; font: 700 1.05rem var(--f-display); }
+#help p { margin: 0; font-size: .86rem; color: var(--muted); }
+#help table { border-collapse: collapse; font-size: .86rem; width: 100%; }
+#help td { padding: 3px 4px; border-bottom: 1px solid rgba(46,107,58,.15); }
+#help td:last-child { text-align: right; font-weight: 800; color: var(--gold); }
+#helpclose { justify-self: end; border: 0; background: #eef6e6; border-radius: 999px; padding: 6px 14px; font-weight: 800; color: var(--ink); cursor: pointer; min-height: 36px; }
+#board .mine { background: rgba(63,143,69,.14); border-radius: 6px; padding: 0 4px; }
+#toast { position: absolute; left: 50%; top: calc(66px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); font-weight: 800; padding: 8px 16px; border-radius: 999px; background: #fff7e0; color: #6f4e12; box-shadow: 0 4px 14px rgba(0,0,0,.18); pointer-events: none; opacity: 0; transition: opacity .3s; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+#toast.on { opacity: 1; }
+#hint { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 10px 20px; border-radius: 999px; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.16); font-weight: 800; color: var(--ink); pointer-events: none; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis; }
+#count { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; }
+#count b { font: 700 clamp(4rem, 18vw, 9rem) var(--f-display); color: #fff; text-shadow: 0 6px 30px rgba(30,68,35,.5); }
+@media (max-width: 640px) { #board { display: none; } #help { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } #me { min-width: 0; } #toast { top: calc(96px + env(safe-area-inset-top, 0px)); font-size: .85rem; } }
+
+/* ---------- several players on one device ---------- */
+kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; background: #fff; color: var(--ink); }
+#edges { position: absolute; inset: 0; pointer-events: none; }
+.edge { position: absolute; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  width: min(44vw, 210px); min-height: 92px; border-radius: 22px; border: 4px solid var(--c); background: rgba(255,255,255,.94);
+  box-shadow: 0 6px 0 var(--c), 0 10px 24px rgba(0,0,0,.22); display: grid; gap: 4px; align-content: center; padding: 10px 14px; text-align: left; font-family: var(--f-body); color: var(--ink); cursor: pointer; }
+.edge.down { box-shadow: 0 2px 0 var(--c), 0 6px 16px rgba(0,0,0,.2); background: var(--tint); margin-top: 4px; }
+.edge .nm { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: .95rem; }
+.edge .act { font-weight: 800; font-size: 1.05rem; color: var(--c); filter: brightness(.8); }
+.edge .hp { height: 7px; }
+.edge .st { font-size: .78rem; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #hint { display: none; }
+#game.local .hud { justify-content: center; }
+#game.local.l2p .hud { top: 50%; transform: translateY(-50%); justify-content: flex-start; padding-top: 0; }
+#game.local.l2p #toast { top: 50%; transform: translate(-50%, -50%); }
+#game.local #help { left: 50%; transform: translateX(-50%); bottom: auto; top: 22%; }
+
+/* ---------- results ---------- */
+#results { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,.35); padding: 20px; }
+#results .sign { width: min(440px, 100%); }
+.rank { display: grid; gap: 6px; }
+.rank div { display: grid; grid-template-columns: 2ch 16px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: #f3f8ee; font-weight: 700; }
+.rank div:first-child { background: linear-gradient(90deg, #fff2c2, #f3f8ee); }
+.rank i { width: 16px; height: 16px; border-radius: 50%; }
+.rank span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.rank small { grid-column: 3 / 5; color: var(--muted); font-weight: 600; margin-top: -4px; }
+</style>
+</head>
+<body>
+
+<section class="screen on" id="home">
+  <div class="sign">
+    <div class="brand"><canvas id="logo" width="112" height="112" aria-hidden="true"></canvas><div><h1>Bumblebloom</h1><p class="tag">A tap-to-fly garden race for 1–8 bees.</p></div></div>
+    <label for="name">Your bee's name<input id="name" maxlength="14" autocomplete="nickname" placeholder="e.g. Buzzy"></label>
+    <button class="btn honey" id="solo" type="button">Play solo against bot bees</button>
+    <button class="btn go" id="create" type="button">Make a garden for friends</button>
+    <div class="or">or join a friend's garden</div>
+    <div class="row"><input id="code" maxlength="6" placeholder="CODE" autocomplete="off" aria-label="Garden code"><button class="btn alt" id="join" type="button" style="flex:.6">Join</button></div>
+    <div id="duo" style="display:none;gap:10px">
+      <div class="or">or two players on this phone or tablet</div>
+      <button class="btn go" id="together" type="button">Play two on this screen</button>
+      <p class="small">Each player gets a button at their end of the screen: drag it onto a flower to fly there.</p>
+    </div>
+    <p class="err" id="err"></p>
+    <p class="small">Tap a flower and your bee flies straight there. New here? <a href="visual-guide.html" target="_blank">See how to play</a>.</p>
+  </div>
+</section>
+
+<section class="screen" id="lobby">
+  <div class="sign">
+    <div class="codebox"><span class="small">Garden code</span><b id="lcode">——————</b><span class="small" id="lurl"></span></div>
+    <div class="bees" id="lbees"></div>
+    <div id="hostbox" style="display:grid;gap:12px">
+      <div class="stepper"><span>Bot bees</span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="bminus" aria-label="Fewer bots">−</button><b id="bots">0</b><button type="button" id="bplus" aria-label="More bots">+</button></div></div>
+      <button class="btn go" id="start" type="button">Start the round</button>
+    </div>
+    <p class="small" id="waitmsg" style="text-align:center;display:none">Waiting for the host to start the round…</p>
+    <p class="small" style="text-align:center">Big screen: open <b id="lboard"></b></p>
+    <p class="small" id="lmode" style="text-align:center"></p>
+  </div>
+</section>
+
+<section class="screen" id="game">
+  <canvas id="cv"></canvas>
+  <div class="hud">
+    <div class="card" id="me"><div class="top"><i id="mydot"></i><span id="myname">You</span></div><div class="hp" aria-label="Health"><div id="hpbar"></div></div><span id="honey">0 honey</span><div id="mystats"></div></div>
+    <div class="card" id="clock">2:00</div>
+    <div style="display:grid;gap:8px;justify-items:end"><div class="card" id="board"></div><button id="helpbtn" type="button" aria-label="How honey works">?</button></div>
+  </div>
+  <div class="card" id="help">
+    <h3>How honey is counted</h3>
+    <p>Every second, each <b>patch</b> of your flowers joined by vines gives <b>flowers × flowers</b> honey. Flowers close together grow vines between them.</p>
+    <table><tr><td>1 flower on its own</td><td>+1 / s</td></tr><tr><td>2 joined flowers</td><td>2 × 2 = +4 / s</td></tr><tr><td>3 joined flowers</td><td>3 × 3 = +9 / s</td></tr><tr><td>4 joined flowers</td><td>4 × 4 = +16 / s</td></tr><tr><td>5 joined flowers</td><td>5 × 5 = +25 / s</td></tr></table>
+    <p>So one big patch beats many small ones. Steal the middle flower of a rival's patch to split it in two. The label on each patch shows what it earns.</p>
+    <button id="helpclose" type="button">Got it</button>
+  </div>
+  <div id="toast"></div>
+  <div id="hint">Tap a flower to fly there</div>
+  <div id="edges"></div>
+  <div id="count"><b id="countn">3</b></div>
+  <div id="results"><div class="sign"><h2 id="rtitle">Round over</h2><div class="rank" id="rlist"></div><p class="small" id="rnext" style="text-align:center">Back to the lobby in a moment…</p></div></div>
+</section>
+
+<script src="art.js"></script>
+<script src="sim.js"></script>
+<script src="net.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
+
+// Every bee steered from this screen is a seat with its own connection to the
+// server, so friends sharing a phone or laptop are simply several players.
+// seats[0] drives the screen; the others only steer.
+let seats = [], lobby = null, info = new Map();
+// two players can share a touch screen; a mouse or keyboard is one player
+if (matchMedia("(pointer: coarse)").matches) $("duo").style.display = "grid";
+
+function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.toggle("on", s.id === id)); }
+$("name").value = store.get("bb-name") || "";
+if (Q.get("code")) $("code").value = Q.get("code").toUpperCase();
+(() => { const c = $("logo").getContext("2d"); c.scale(2, 2); Art.flower(c, 28, 30, 15, "#e8629b", 0); Art.bee(c, 34, 18, -.5, "#f2b705", .3); })();
+
+function saveSeats() { store.set("bb-seats", JSON.stringify(seats.filter(s => s.key).map(s => ({ code: s.code, key: s.key })))); }
+let netStatus = "";
+function openSeat(seat, first) {
+  const link = Net.open(first, m => { if (seat.link === link) onMessage(seat, m); }, () => {
+    if (seat.link !== link) return;
+    seat.link = null;
+    // a dropped connection rejoins its seat (the host tab itself never drops)
+    if (seats.includes(seat) && seat.code && seat.key) setTimeout(() => { if (seats.includes(seat) && !seat.link) openSeat(seat, { t: "resume", code: seat.code, key: seat.key }); }, 1500);
+  }, kind => { netStatus = kind; if (lobby) renderLobby(); });
+  seat.link = link;
+}
+function send(seat, o) { if (seat && seat.link) seat.link.send(o); }
+function closeAll() { const old = seats; seats = []; old.forEach(s => { if (s.link) s.link.close(); }); }
+
+async function start(mode, count = 1) {
+  const name = $("name").value.trim(); store.set("bb-name", name);
+  const code = $("code").value.trim().toUpperCase();
+  if (mode === "join" && !/^[A-Z0-9]{6}$/.test(code)) { $("err").textContent = "Garden codes are 6 letters and numbers."; return; }
+  $("err").textContent = "";
+  closeAll();
+  await Net.ready();
+  const first = { n: 0, name, down: false, wantFriends: count - 1 };
+  seats = [first];
+  openSeat(first, { t: "hello", mode, name, code });
+}
+// once the first seat has a garden, the friends on this device join it
+function addFriends(code, n) {
+  for (let i = 1; i <= n; i++) {
+    const seat = { n: i, name: "Player " + (i + 1), down: false };
+    seats.push(seat);
+    openSeat(seat, { t: "hello", mode: "join", name: seat.name, code });
+  }
+}
+$("solo").onclick = () => start("solo");
+$("create").onclick = () => start("create");
+$("join").onclick = () => start("join");
+$("together").onclick = () => start("create", 2);
+$("code").addEventListener("keydown", e => { if (e.key === "Enter") start("join"); });
+$("bminus").onclick = () => send(seats[0], { t: "bots", v: Math.max(0, (lobby?.bots || 0) - 1) });
+$("bplus").onclick = () => send(seats[0], { t: "bots", v: Math.min(7, (lobby?.bots || 0) + 1) });
+$("start").onclick = () => send(seats[0], { t: "start" });
+$("helpbtn").onclick = () => $("help").classList.toggle("on");
+$("helpclose").onclick = () => $("help").classList.remove("on");
+["helpbtn", "helpclose", "help"].forEach(id => $(id).addEventListener("pointerdown", e => e.stopPropagation()));
+
+function onMessage(seat, m) {
+  if (m.t === "hi") {
+    Object.assign(seat, { id: m.id, slot: m.slot, code: m.code, key: m.key });
+    saveSeats();
+    if (seat.n === 0) { history.replaceState(null, "", location.pathname + "?code=" + m.code); if (seat.wantFriends) { addFriends(m.code, seat.wantFriends); seat.wantFriends = 0; } }
+    return;
+  }
+  if (m.t === "err" || m.t === "lost") {
+    if (seat.n === 0) { $("err").textContent = m.msg || "That seat has gone. Start a new garden."; closeAll(); store.del("bb-seats"); show("home"); }
+    else { seats = seats.filter(s => s !== seat); if (seat.ws) seat.ws.close(); toast(m.msg || "A player on this device could not join."); }
+    return;
+  }
+  if (seat !== seats[0]) return;          // the screen follows the first seat only
+  switch (m.t) {
+    case "lobby":
+      lobby = m;
+      if (seats[0] && seats[0].code !== m.code) { seats.forEach(x => x.code = m.code); saveSeats(); }
+      m.bees.forEach(b => { info.set(b.id, { slot: b.slot, name: b.name }); const s = seats.find(x => x.id === b.id); if (s) { s.slot = b.slot; s.name = b.name; } });
+      if (m.phase === "lobby") { renderLobby(); show("lobby"); $("results").style.display = "none"; }
+      break;
+    case "go":
+      info = new Map(m.bees.map(b => [b.id, { slot: b.slot, name: b.name }]));
+      m.bees.forEach(b => { const s = seats.find(x => x.id === b.id); if (s) { s.slot = b.slot; s.name = b.name; } });
+      Garden.setup({ ...m }); Smooth.reset();
+      $("mydot").style.background = PC[seats[0].slot]; $("myname").textContent = seats[0].name || "You";
+      $("results").style.display = "none";
+      show("game"); resize(); buildEdges();
+      if (m.in > 0) { countdown(m.in); $("help").classList.add("on"); setTimeout(() => $("help").classList.remove("on"), 9000); }
+      break;
+    case "s":
+      Smooth.push(m);
+      if (m.fx) Garden.fx(m.fx);
+      if (m.toast) toast(m.toast);
+      break;
+    case "end": showResults(m.rank); break;
+  }
+}
+
+const mineIds = () => seats.filter(s => s.id != null).map(s => s.id);
+function renderLobby() {
+  $("lcode").textContent = lobby.code;
+  const page = location.host + location.pathname.replace(/index\.html$/, "");
+  $("lurl").textContent = "Friends open " + page + "?code=" + lobby.code;
+  $("lboard").textContent = page.replace(/\/?$/, "/") + "board.html?code=" + lobby.code;
+  const h = Net.hosting;
+  $("lmode").textContent = Net.mode === "server" ? "Server mode: anyone who can reach this server can join."
+    : h && netStatus === "offline" ? "Could not go online, so only players on this screen can play. Check the internet connection."
+    : h ? (netStatus === "online" || h.online ? "You are hosting this garden in this tab. Keep it open and in front until the game ends." : "Opening the garden to other devices…")
+    : "Connected to the host's browser.";
+  const here = new Set(mineIds());
+  const cells = lobby.bees.map(b => `<div class="chip"><i style="background:${PC[b.slot]}"></i><span>${esc(b.name)}</span><em>${here.has(b.id) ? (seats.length > 1 ? "this device" : "you") : b.id === lobby.host ? "host" : ""}</em></div>`);
+  const isHost = seats[0] && lobby.host === seats[0].id;
+  for (let i = 0; i < Math.min(lobby.bots, 8 - lobby.bees.length); i++) cells.push(`<div class="chip"><i style="background:#cfd8c8"></i><span>Bot bee</span><em>bot</em></div>`);
+  while (cells.length < 2) cells.push(`<div class="chip empty"><span>waiting for a bee…</span></div>`);
+  $("lbees").innerHTML = cells.join("");
+  $("bots").textContent = lobby.bots;
+  $("hostbox").style.display = isHost ? "grid" : "none";
+  $("waitmsg").style.display = isHost ? "none" : "block";
+  $("start").textContent = lobby.bees.length === 1 && lobby.bots === 0 ? "Start (3 bot bees will join you)" : "Start the round";
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+let toastT = 0;
+function toast(msg) { $("toast").textContent = msg; $("toast").classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 2600); }
+function countdown(n) {
+  const el = $("count"); el.style.display = "flex";
+  const end = performance.now() + n * 1000;
+  const tick = () => { const left = (end - performance.now()) / 1000; if (left <= -0.6) { el.style.display = "none"; return; } $("countn").textContent = left > 0 ? Math.ceil(left) : "Buzz!"; requestAnimationFrame(tick); };
+  tick();
+}
+function showResults(rank) {
+  const here = new Set(seats.map(s => s.slot));
+  const top = rank[0];
+  $("rtitle").textContent = top && here.has(top.slot) && seats.length === 1 ? "Your hive wins!" : top ? `${top.name} wins!` : "Round over";
+  $("rlist").innerHTML = rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)}${here.has(r.slot) && seats.length === 1 ? " (you)" : ""}</span><b>${r.honey}</b><small>${r.flowers} flowers · biggest patch ${r.patch} (+${r.rate}/s at the end) · ${r.faints} faints</small></div>`).join("");
+  $("results").style.display = "flex";
+}
+
+// ---- input: tap a flower and the bee flies straight there
+//   one player:            tap or click the flower (mouse hover shows the line first);
+//                          on a keyboard, Space steps through the nearest flowers
+//   two on a phone/tablet: drag from your own end-of-screen button onto the flower
+const shared = () => seats.length > 1;
+const touchy = () => matchMedia("(pointer: coarse)").matches;
+let lastS = null, hover = -1;
+function fly(seat, f) { if (seat && f >= 0) send(seat, { t: "to", f }); }
+function aims() {
+  const out = [];
+  seats.forEach(seat => {
+    if (seat.drag && seat.aim >= 0) out.push({ id: seat.id, f: seat.aim, mode: "hover" });
+    if (seat.pick != null && seat.pick >= 0) out.push({ id: seat.id, f: seat.pick, mode: "pick" });
+  });
+  if (!shared() && hover >= 0 && seats[0]) out.push({ id: seats[0].id, f: hover, mode: "hover" });
+  return out;
+}
+const cvEl = $("cv");
+cvEl.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  const f = Garden.flowerAt(e.clientX, e.clientY);
+  if (shared()) { if (f >= 0) toast("Drag from your own button onto a flower"); return; }
+  if (f >= 0) { fly(seats[0], f); hover = -1; }
+});
+cvEl.addEventListener("pointermove", e => { if (e.pointerType === "mouse" && !shared()) hover = Garden.flowerAt(e.clientX, e.clientY); });
+cvEl.addEventListener("pointerleave", () => { hover = -1; });
+cvEl.addEventListener("contextmenu", e => e.preventDefault());
+
+// keyboard: each tap moves the ring to the next-nearest flower, a short pause sends the bee
+function stepPick(seat) {
+  const b = lastS && lastS.b.find(x => x.id === seat.id);
+  if (!b || !(b.st === 0 || b.st === 1)) return;
+  if (!seat.list || seat.pick == null) { seat.list = Garden.nearestFlowers(b); seat.pi = 0; }
+  else seat.pi = (seat.pi + 1) % seat.list.length;
+  seat.pick = seat.list[seat.pi];
+  if (seat.el) seat.el.classList.add("down");
+  clearTimeout(seat.pickT);
+  seat.pickT = setTimeout(() => { fly(seat, seat.pick); seat.pick = null; seat.list = null; if (seat.el) seat.el.classList.remove("down"); }, 650);
+}
+window.addEventListener("keydown", e => {
+  if (!$("game").classList.contains("on") || e.code !== "Space" || shared()) return;
+  e.preventDefault();
+  if (!e.repeat) stepPick(seats[0]);
+});
+
+// shared touch screens: press your edge button, drag to a flower, let go
+function dragFrom(el, seat) {
+  el.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); try { el.setPointerCapture(e.pointerId); } catch (err) {} seat.drag = true; seat.aim = -1; el.classList.add("down"); });
+  el.addEventListener("pointermove", e => { if (seat.drag) seat.aim = Garden.flowerAt(e.clientX, e.clientY); });
+  const end = () => { if (!seat.drag) return; seat.drag = false; el.classList.remove("down"); fly(seat, seat.aim); seat.aim = -1; };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", () => { seat.drag = false; seat.aim = -1; el.classList.remove("down"); });
+  el.addEventListener("contextmenu", e => e.preventDefault());
+}
+
+// Two on one touch screen: a button at each player's end. Held upright, one
+// sits at the bottom and one at the top (turned to face that player); held
+// sideways, one on the left and one on the right.
+function buildEdges() {
+  const host = $("edges"); host.innerHTML = "";
+  $("game").classList.toggle("local", shared());
+  if (!shared()) return;
+  const portrait = innerHeight > innerWidth;
+  $("game").classList.toggle("l2p", portrait);
+  const g = "12px", inset = "env(safe-area-inset-bottom, 0px)";
+  const spots = portrait
+    ? [{ left: "50%", bottom: `calc(${g} + ${inset})`, tx: "translateX(-50%)" }, { left: "50%", top: g, tx: "translateX(-50%)", flip: true }]
+    : [{ left: g, top: "50%", tx: "translateY(-50%)" }, { right: g, top: "50%", tx: "translateY(-50%)" }];
+  seats.forEach((seat, i) => {
+    const sp = spots[i], b = document.createElement("button");
+    b.type = "button"; b.className = "edge";
+    const col = PC[seat.slot ?? i];
+    b.style.setProperty("--c", col); b.style.setProperty("--tint", Art.mix(col, .8));
+    ["left", "right", "top", "bottom"].forEach(k => { if (sp[k]) b.style[k] = sp[k]; });
+    b.style.transform = `${sp.tx || ""} ${sp.flip ? "rotate(180deg)" : ""}`.trim() || "none";
+    b.setAttribute("aria-label", `${seat.name || "Player " + (i + 1)}: drag onto a flower`);
+    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">DRAG TO A FLOWER</span><div class="hp"><div></div></div><span class="st">0 honey</span>`;
+    dragFrom(b, seat);
+    seat.el = b; host.appendChild(b);
+  });
+}
+addEventListener("resize", () => { if ($("game").classList.contains("on")) buildEdges(); });
+
+// ---- render
+const cv = $("cv"), ctx = cv.getContext("2d");
+let DPR = 1, cw = 0, ch = 0;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); cw = innerWidth; ch = innerHeight; cv.width = cw * DPR; cv.height = ch * DPR; }
+addEventListener("resize", resize);
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if ($("game").classList.contains("on") && Garden.world && seats[0]) {
+    const S = Smooth.sample(Garden.world, info) || { b: [], o: Garden.world.flowers.map(() => null), p: [] };
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
+    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mineIds(), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims() });
+    lastS = S; hud(S);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+const hpColor = f => f > .5 ? "#4fae52" : f > .25 ? "#f0a824" : "#e8504f";
+const action = st => st === 0 ? "DRAG TO A FLOWER" : st === 1 ? "FLYING…" : st === 2 ? "DIZZY…" : "FAINTED…";
+function hud(S) {
+  const stats = Garden.stats(S.o);
+  const me = seats[0], mb = S.b.find(b => b.id === me.id);
+  if (mb && !shared()) {
+    const f = Math.max(0, mb.hp) / 100, bar = $("hpbar");
+    bar.style.width = (f * 100) + "%"; bar.style.background = hpColor(f);
+    $("honey").textContent = mb.score + " honey";
+    const st = stats.get(me.slot);
+    const sum = st.patches.length ? st.patches.map(n => n > 1 ? `${n}×${n}` : "1").join(" + ") : "no flowers yet";
+    $("mystats").innerHTML = `<b>${st.flowers}</b> flower${st.flowers === 1 ? "" : "s"} · biggest patch <b>${st.biggest}</b><br><span class="rate">+${st.rate} honey/s</span> = ${sum}`;
+    $("hint").textContent = mb.st === 2 ? "Dizzy… back in a moment" : mb.st === 3 ? "Fainted… back in a moment" : touchy() ? "Tap a flower to fly there" : "Click a flower to fly there (or tap Space to pick)";
+  }
+  if (shared()) seats.forEach(seat => {
+    const b = S.b.find(x => x.id === seat.id); if (!b || !seat.el) return;
+    const f = Math.max(0, b.hp) / 100, st = stats.get(seat.slot) || { flowers: 0, rate: 0 };
+    seat.el.querySelector(".act").textContent = seat.drag ? "NOW LET GO ON A FLOWER" : action(b.st);
+    const bar = seat.el.querySelector(".hp div"); bar.style.width = (f * 100) + "%"; bar.style.background = hpColor(f);
+    seat.el.querySelector(".st").textContent = `${b.score} honey · ${st.flowers} flower${st.flowers === 1 ? "" : "s"} · +${st.rate}/s`;
+  });
+  const left = S.left ?? 0; $("clock").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");
+  $("clock").classList.toggle("low", left < 15 && S.ph === "play");
+  if (!shared()) {
+    const ranked = [...S.b].sort((a, b) => b.score - a.score);
+    $("board").innerHTML = `<div class="hd"><span>bee</span><em>flowers · rate</em><b style="color:inherit">honey</b></div>` + ranked.map(b => { const st = stats.get(b.slot) || { flowers: 0, rate: 0 }; return `<div class="${b.id === me.id ? "mine" : ""}"><i style="background:${PC[b.slot]}"></i><span>${esc(b.name || "")}</span><em>${st.flowers} · +${st.rate}/s</em><b>${b.score}</b></div>`; }).join("");
+  }
+}
+
+// ---- come back to every seat after a refresh or a dropped connection
+(() => {
+  let saved = null; try { saved = JSON.parse(store.get("bb-seats") || "null"); } catch (e) {}
+  const want = (Q.get("code") || "").toUpperCase();
+  if (!Array.isArray(saved) || !saved.length || (want && want !== saved[0].code)) return;
+  seats = saved.map((s, i) => ({ n: i, code: s.code, key: s.key, down: false }));
+  Net.ready().then(() => seats.forEach(seat => openSeat(seat, { t: "resume", code: seat.code, key: seat.key })));
+})();
+</script>
+</body>
+</html>

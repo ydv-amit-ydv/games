@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bumblebloom · big screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+:root { --ink: #1e4423; --muted: #4d6b50; --gold: #a9701f; --card: rgba(255,255,255,.94); color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { font-family: "Nunito", system-ui, sans-serif; color: var(--ink); background: repeating-linear-gradient(180deg, rgba(255,255,255,.12) 0 56px, transparent 56px 112px), linear-gradient(180deg, #a8d98a, #6fae5e); }
+#poster { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 3vw; }
+.sign { background: var(--card); border-radius: 28px; padding: clamp(20px, 3vw, 48px); box-shadow: 0 18px 50px rgba(30,68,35,.3); display: grid; gap: clamp(10px, 1.6vw, 22px); justify-items: center; text-align: center; width: min(1100px, 100%); }
+h1 { font: 700 clamp(36px, 6vw, 84px)/1 "Lora", Georgia, serif; margin: 0; }
+.how { font-size: clamp(15px, 1.7vw, 24px); color: var(--muted); margin: 0; }
+#code { font: 800 clamp(56px, 12vw, 170px)/1 "Nunito", system-ui, sans-serif; letter-spacing: .2em; padding-left: .2em; color: var(--gold); }
+#url { font: 800 clamp(16px, 2vw, 30px) "Nunito", system-ui, sans-serif; }
+#bees { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.chip { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; background: #f3f8ee; font-weight: 800; font-size: clamp(14px, 1.5vw, 22px); }
+.chip i { width: 18px; height: 18px; border-radius: 50%; }
+#live { position: fixed; inset: 0; display: none; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; }
+#side { position: absolute; right: 16px; top: 16px; width: clamp(190px, 18vw, 300px); display: grid; gap: 10px; }
+.card { background: var(--card); border-radius: 16px; box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 12px 16px; }
+#clock { font: 800 clamp(26px, 3vw, 44px) "Nunito", sans-serif; text-align: center; font-variant-numeric: tabular-nums; }
+#clock.low { color: #c03a3a; }
+#ccode { font-weight: 800; color: var(--muted); text-align: center; font-size: clamp(12px, 1vw, 16px); }
+#rows { display: grid; gap: 6px; }
+#rows div { display: grid; grid-template-columns: 1.5em 14px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-weight: 800; font-size: clamp(13px, 1.2vw, 19px); }
+#rows i { width: 14px; height: 14px; border-radius: 50%; }
+#rows span:nth-child(3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#rows b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.legend { display: grid; gap: 4px; font-size: clamp(12px, 1vw, 16px); color: var(--muted); }
+.legend b { color: var(--ink); }
+#rows small { grid-column: 3 / 5; color: var(--muted); font-size: .72em; margin-top: -6px; font-variant-numeric: tabular-nums; }
+.hpline { grid-column: 3 / 5; height: 5px; border-radius: 3px; background: #e4ecdc; overflow: hidden; margin-top: -3px; }
+.hpline u { display: block; height: 100%; background: #4fae52; }
+#toast { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); font-weight: 800; font-size: clamp(14px, 1.4vw, 22px); padding: 10px 20px; border-radius: 999px; background: #fff7e0; color: #6f4e12; box-shadow: 0 6px 18px rgba(0,0,0,.2); opacity: 0; transition: opacity .3s; white-space: nowrap; }
+#toast.on { opacity: 1; }
+#results { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,.4); }
+.rank { display: grid; gap: 8px; width: min(640px, 90vw); }
+.rank div { display: grid; grid-template-columns: 2ch 20px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 16px; border-radius: 14px; background: #f3f8ee; font-weight: 800; font-size: clamp(16px, 1.8vw, 26px); }
+.rank div:first-child { background: linear-gradient(90deg, #fff2c2, #f3f8ee); font-size: clamp(20px, 2.4vw, 34px); }
+.rank i { width: 20px; height: 20px; border-radius: 50%; }
+.rank b { color: var(--gold); }
+#err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; padding: 30px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="poster"><div class="sign">
+  <h1>Bumblebloom</h1>
+  <p class="how">On your phone, open the address below and type the garden code</p>
+  <div id="url">—</div>
+  <div id="code">——————</div>
+  <div id="bees"></div>
+  <p class="how" id="status">Waiting for bees…</p>
+</div></div>
+<div id="live">
+  <canvas id="cv"></canvas>
+  <div id="side"><div class="card"><div id="clock">2:00</div><div id="ccode"></div></div><div class="card"><div id="rows"></div></div><div class="card legend"><b>How honey is counted</b><span>Each patch of joined flowers gives <b>flowers × flowers</b> honey every second.</span><span>1 flower = +1/s · 2 joined = +4/s · 3 = +9/s · 4 = +16/s · 5 = +25/s</span></div></div>
+  <div id="toast"></div>
+  <div id="results"><div class="sign"><h1 id="rtitle">Round over</h1><div class="rank" id="rlist"></div></div></div>
+</div>
+<div id="err"></div>
+
+<script src="art.js"></script>
+<script src="sim.js"></script>
+<script src="net.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const code = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase();
+let info = new Map(), ws = null;
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+if (!/^[A-Z0-9]{6}$/.test(code)) { $("err").style.display = "flex"; $("err").textContent = "Open this page with a garden code, for example /board?code=ABC234"; $("poster").style.display = "none"; }
+else { $("code").textContent = code; const page = location.host + location.pathname.replace(/board(\.html)?$/, ""); $("url").textContent = page + "?code=" + code; $("ccode").textContent = "join: " + page + " · " + code; connect(); }
+
+function connect() {
+  Net.ready().then(() => {
+    ws = Net.open({ t: "watch", code }, handle, () => setTimeout(connect, 2000));
+  });
+}
+function live(on) { $("poster").style.display = on ? "none" : "flex"; $("live").style.display = on ? "block" : "none"; if (on) resize(); }
+let toastT = 0;
+function handle(m) {
+  if (m.t === "err") { $("status").textContent = m.msg; }
+  else if (m.t === "lost") { }
+  else if (m.t === "lobby") {
+    m.bees.forEach(b => info.set(b.id, { slot: b.slot, name: b.name }));
+    if (m.phase === "lobby") {
+      live(false); $("results").style.display = "none";
+      $("bees").innerHTML = m.bees.map(b => `<span class="chip"><i style="background:${PC[b.slot]}"></i>${esc(b.name)}</span>`).join("");
+      $("status").textContent = m.bees.length ? `${m.bees.length} bee${m.bees.length > 1 ? "s" : ""} in the garden${m.bots ? ` + ${m.bots} bot${m.bots > 1 ? "s" : ""}` : ""}. The host starts the round.` : "Waiting for bees…";
+    }
+  } else if (m.t === "go") {
+    info = new Map(m.bees.map(b => [b.id, { slot: b.slot, name: b.name }]));
+    Garden.setup({ ...m }); Smooth.reset(); $("results").style.display = "none"; live(true);
+  } else if (m.t === "s") {
+    Smooth.push(m); if (m.fx) Garden.fx(m.fx);
+    if (m.toast) { $("toast").textContent = m.toast; $("toast").classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 2800); }
+  } else if (m.t === "end") {
+    $("rtitle").textContent = m.rank[0] ? `${m.rank[0].name} wins!` : "Round over";
+    $("rlist").innerHTML = m.rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)} <small style="font-size:.6em;color:#4d6b50">${r.flowers} flowers · biggest patch ${r.patch}</small></span><b>${r.honey}</b></div>`).join("");
+    $("results").style.display = "flex";
+  }
+}
+const cv = $("cv"), ctx = cv.getContext("2d");
+let DPR = 1, cw = 0, ch = 0;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); cw = innerWidth; ch = innerHeight; cv.width = cw * DPR; cv.height = ch * DPR; }
+addEventListener("resize", resize);
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if ($("live").style.display === "block" && Garden.world) {
+    const S = Smooth.sample(Garden.world, info) || { b: [], o: [], p: [] };
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
+    const sideW = $("side").offsetWidth + 24;
+    ctx.save(); Garden.draw(ctx, cw - sideW, ch, S, now / 1000, { names: true, dt, allBadges: true }); ctx.restore();
+    const left = S.left ?? 0; $("clock").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");
+    $("clock").classList.toggle("low", left < 15 && S.ph === "play");
+    const stats = Garden.stats(S.o);
+    $("rows").innerHTML = [...S.b].sort((a, b) => b.score - a.score).map((b, i) => { const st = stats.get(b.slot) || { flowers: 0, biggest: 0, rate: 0 }; return `<div><span>${i + 1}</span><i style="background:${PC[b.slot]}"></i><span>${esc(b.name || "")}</span><b>${b.score}</b><small>${st.flowers} flower${st.flowers === 1 ? "" : "s"} · biggest patch ${st.biggest} · +${st.rate}/s</small><span class="hpline"><u style="width:${Math.max(0, b.hp)}%;background:${b.hp > 50 ? "#4fae52" : b.hp > 25 ? "#f0a824" : "#e8504f"}"></u></span></div>`; }).join("");
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@700&family=Nunito:wght@400;700;800&display=swap">
+<style>
+:root { --ink: #1e4423; --muted: #4d6b50; --card: rgba(255,255,255,.95); color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; font-family: "Nunito", system-ui, sans-serif; color: var(--ink);
+  background: repeating-linear-gradient(180deg, rgba(255,255,255,.12) 0 56px, transparent 56px 112px), linear-gradient(180deg, #a8d98a, #6fae5e);
+  display: grid; place-items: center; padding-inline: 20px; padding-block: 40px; }
+main { width: min(560px, 100%); display: grid; gap: 18px; }
+h1 { font: 700 2.4rem "Lora", Georgia, serif; margin: 0; text-align: center; color: #fff; text-shadow: 0 3px 14px rgba(30,68,35,.4); }
+a.game { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 16px; align-items: center; text-decoration: none; color: inherit;
+  background: var(--card); border-radius: 20px; padding: 18px; box-shadow: 0 10px 30px rgba(30,68,35,.25); }
+a.game:hover, a.game:focus-visible { outline: 3px solid #f2b23f; outline-offset: 3px; }
+a.game h2 { margin: 0; font: 700 1.4rem "Lora", Georgia, serif; }
+a.game p { margin: 4px 0 0; color: var(--muted); font-size: .95rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tags span { font-size: .75rem; font-weight: 800; background: #eef6e6; border-radius: 999px; padding: 2px 10px; }
+canvas { width: 76px; height: 76px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Games</h1>
+  <a class="game" href="bumblebloom/">
+    <canvas id="logo" width="152" height="152" aria-hidden="true"></canvas>
+    <div>
+      <h2>Bumblebloom</h2>
+      <p>A tap-to-fly garden race. Pollinate flowers, grow vines between them, and dodge dragonflies, birds and spiders.</p>
+      <div class="tags"><span>1–8 players</span><span>phones &amp; laptops</span><span>2-minute rounds</span></div>
+    </div>
+  </a>
+</main>
+<script src="bumblebloom/art.js"></script>
+<script>
+(() => { const c = document.getElementById("logo").getContext("2d"); c.scale(2, 2); Art.lawn(c, 0, 0, 76, 76, false, 3); Art.flower(c, 36, 42, 18, "#e8629b", 0); Art.bee(c, 44, 24, -.5, "#f2b705", .3); })();
+</script>
+</body>
+</html>
