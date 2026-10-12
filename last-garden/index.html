@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>The Last Garden</title>
+<style>
+:root{
+  --navy:#0d1a2b; --navy2:#152a40; --gold:#d9b667; --gold2:#f2d89a; --goldDim:#9e8449;
+  --ink:#f2e9d6; --dim:#9fb0b8; --leaf:#5fbb56; --bad:#e2596f; --safe:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px)
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0a1410;color:var(--ink);font:14px/1.4 system-ui,"Segoe UI",Roboto,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none}
+canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+/* the gilded panels from the concept art */
+.panel{position:relative;background:linear-gradient(180deg,rgba(18,34,52,.94),rgba(9,18,30,.96));
+  border:1px solid var(--goldDim);border-radius:10px;
+  box-shadow:0 6px 22px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,232,180,.14);
+  backdrop-filter:blur(5px)}
+.panel::after{content:"";position:absolute;inset:3px;border:1px solid rgba(217,182,103,.30);
+  border-radius:7px;pointer-events:none}
+.hud{position:fixed;pointer-events:none;z-index:2}
+
+#top{left:12px;top:12px;padding:11px 16px;display:flex;flex-direction:column;gap:2px;min-width:190px}
+#topBar,#lbBtn{display:none}
+#top b{font:700 17px Georgia,"Iowan Old Style",serif;color:var(--gold2);letter-spacing:.4px;
+  text-shadow:0 1px 6px rgba(217,182,103,.35)}
+#top .row{font-size:12.5px;color:var(--dim)}
+#gold{color:var(--gold2);font-weight:800}
+#banked{color:var(--leaf);font-weight:700}
+#bankAmt{color:var(--leaf);font-weight:800}
+
+#lb{right:12px;top:12px;min-width:206px;padding:10px 14px}
+#lb h4{font:700 11px Georgia,serif;color:var(--gold);letter-spacing:1.1px;margin-bottom:7px;
+  padding-bottom:6px;border-bottom:1px solid rgba(217,182,103,.26)}
+#lb ol{list-style:none}
+#lb li{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;color:var(--ink)}
+#lb li .pos{color:var(--dim);width:14px;font-weight:700;font-size:11px}
+#lb li .pip{width:9px;height:9px;border-radius:50%;background:#7fa8c4;flex-shrink:0;
+  box-shadow:0 0 6px rgba(160,200,230,.5)}
+#lb li .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lb li .sc{color:var(--gold2);font-weight:700}
+#lb li.me{background:linear-gradient(90deg,rgba(217,182,103,.18),rgba(217,182,103,0));
+  border-radius:5px;padding:3px 6px;margin:0 -6px}
+#lb li.me .pip{background:var(--leaf);box-shadow:0 0 8px rgba(95,187,86,.7)}
+#lb li:first-child .pos{color:var(--gold2)}
+#lb li:first-child .pip{background:var(--gold2);box-shadow:0 0 9px rgba(242,216,154,.8)}
+#lb .foot{margin-top:7px;padding-top:6px;border-top:1px solid rgba(217,182,103,.2);
+  font-size:9.5px;color:#7b8e99;letter-spacing:.2px}
+
+#mini{position:fixed;left:12px;bottom:calc(12px + var(--safe));border-radius:10px;
+  border:1px solid var(--goldDim);box-shadow:0 6px 22px rgba(0,0,0,.5);background:#0d1a2b;z-index:2}
+
+#toast{position:fixed;left:50%;top:12%;transform:translateX(-50%);display:flex;flex-direction:column;
+  align-items:center;gap:6px;pointer-events:none;z-index:4}
+#toast div{padding:8px 17px;border-radius:9px;font-weight:700;font-size:13px;color:var(--ink);
+  background:linear-gradient(180deg,rgba(18,34,52,.95),rgba(9,18,30,.96));
+  border:1px solid var(--goldDim);box-shadow:0 5px 16px rgba(0,0,0,.45);
+  animation:tin .22s ease-out;transition:opacity .45s}
+#toast .good{border-color:var(--leaf);color:#c8f5bc}
+#toast .bad{border-color:var(--bad);color:#ffc9d2}
+#toast .boat{border-color:#5aa8d0;color:#c4e8ff}
+@keyframes tin{from{transform:translateY(-8px);opacity:0}}
+
+#banner{position:fixed;left:0;right:0;top:27%;text-align:center;font:700 31px Georgia,serif;
+  color:var(--gold2);text-shadow:0 2px 20px rgba(0,0,0,.9),0 0 30px rgba(217,182,103,.4);
+  pointer-events:none;display:none;z-index:3}
+#banner small{display:block;font:400 14px system-ui;color:var(--ink);margin-top:7px;text-shadow:0 2px 8px #000}
+
+#lootbtn{display:none;position:fixed;right:12px;bottom:calc(var(--padH) + 66px + var(--safe));
+  z-index:3;padding:9px 14px;font:700 11.5px system-ui;letter-spacing:.4px;cursor:pointer;
+  color:var(--gold2);border-radius:999px;
+  background:linear-gradient(180deg,rgba(24,44,66,.92),rgba(10,20,32,.94));
+  border:1px solid var(--goldDim);box-shadow:0 4px 14px rgba(0,0,0,.5)}
+#lootbtn.show{display:block}
+#lootbtn.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1204;
+  border-color:#8a7038}
+#viewbtn{position:fixed;right:12px;bottom:calc(var(--padH) + 24px + var(--safe));z-index:3;padding:11px 16px;
+  font:700 12px system-ui;letter-spacing:.5px;color:#1a1204;
+  background:linear-gradient(180deg,var(--gold2),var(--gold));border:1px solid #8a7038;
+  border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.5);cursor:pointer}
+/* One number drives the whole bottom of the screen: the pad's cell size.
+   Everything that has to clear the pad is measured from --padH. */
+:root{--pad:70px;--padGap:8px;--padH:calc(var(--pad)*2 + var(--padGap))}
+#pad{position:fixed;left:50%;bottom:calc(14px + var(--safe));transform:translateX(-50%);
+  display:grid;grid-template-columns:repeat(3,var(--pad));grid-template-rows:repeat(2,var(--pad));
+  gap:var(--padGap);z-index:3;touch-action:none}
+#pad button{background:linear-gradient(180deg,rgba(24,44,66,.92),rgba(10,20,32,.94));
+  border:1px solid var(--goldDim);border-radius:16px;color:var(--gold2);
+  font-size:calc(var(--pad)*.40);font-weight:700;line-height:1;
+  box-shadow:0 3px 14px rgba(0,0,0,.5);touch-action:none;-webkit-tap-highlight-color:transparent}
+#pad button:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1204;
+  transform:scale(.95)}
+
+/* ---- the match ticker, bottom left, out of the thumbs' way */
+#state{position:fixed;left:50%;top:calc(58px + var(--safe-t));transform:translateX(-50%);
+  z-index:4;padding:6px 14px;border-radius:999px;font:800 11.5px system-ui;letter-spacing:.7px;
+  pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+#state:empty{display:none}
+#state.safe{color:#0f2a14;background:linear-gradient(180deg,#a8ec9c,#6cc964);
+  box-shadow:0 0 22px rgba(120,230,150,.5)}
+#state.warn{color:#2a0d12;background:linear-gradient(180deg,#ffb3c0,#e2596f)}
+#state.soon{color:#2a1f08;background:linear-gradient(180deg,#ffd873,#f2b23f)}
+#teach{position:fixed;left:50%;top:22%;transform:translateX(-50%) scale(.94);z-index:7;
+  width:min(88vw,340px);padding:16px 18px;border-radius:14px;opacity:0;pointer-events:none;
+  display:flex;flex-direction:column;gap:9px;transition:opacity .22s ease,transform .22s ease;
+  background:linear-gradient(180deg,rgba(14,30,44,.97),rgba(7,16,26,.98));
+  border:1px solid var(--gold);box-shadow:0 14px 44px rgba(0,0,0,.66)}
+#teach.on{opacity:1;transform:translateX(-50%) scale(1);pointer-events:auto}
+#teach b{font:700 16px Georgia,serif;color:var(--gold2)}
+#teach span{font:400 13.5px/1.55 system-ui;color:var(--ink)}
+#teach button{align-self:flex-end;padding:8px 18px;border-radius:8px;cursor:pointer;
+  font:700 12px system-ui;color:#1a1204;
+  background:linear-gradient(180deg,var(--gold2),var(--gold));border:1px solid #8a7038}
+.ghost{width:100%;margin-top:9px;padding:11px;border-radius:10px;cursor:pointer;
+  font:600 13px system-ui;color:var(--gold2);background:rgba(255,255,255,.05);
+  border:1px dashed var(--goldDim)}
+.ghost:active{background:rgba(242,178,63,.18)}
+#feed{position:fixed;left:10px;bottom:calc(var(--padH) + 56px + var(--safe));z-index:3;width:min(58vw,300px);
+  display:flex;flex-direction:column;gap:4px;pointer-events:none}
+#feed div{font:600 11.5px system-ui;color:#d8e6d2;padding:5px 9px;border-radius:7px;
+  background:linear-gradient(180deg,rgba(10,22,16,.80),rgba(6,14,10,.86));
+  border:1px solid rgba(180,210,170,.18);border-left:2px solid var(--gold);
+  text-shadow:0 1px 3px #000;animation:feedin .35s ease-out}
+@keyframes feedin{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+
+/* ---- talk */
+#talk{position:fixed;left:12px;bottom:calc(var(--padH) - 42px + var(--safe));z-index:5}
+#talkbtn{width:56px;height:56px;border-radius:999px;font-size:25px;line-height:1;cursor:pointer;
+  background:linear-gradient(180deg,rgba(24,44,66,.94),rgba(10,20,32,.96));
+  border:1px solid var(--goldDim);box-shadow:0 3px 12px rgba(0,0,0,.45)}
+#talkbtn.on{background:linear-gradient(180deg,var(--gold2),var(--gold))}
+#talkbtn.ping{animation:ping 1.1s ease-out 2}
+@keyframes ping{0%,100%{box-shadow:0 3px 12px rgba(0,0,0,.45)}50%{box-shadow:0 0 0 7px rgba(242,178,63,.26)}}
+#talkpop{display:none;position:absolute;left:0;bottom:66px;width:min(80vw,330px);
+  background:linear-gradient(180deg,rgba(12,26,40,.96),rgba(6,14,24,.97));
+  border:1px solid var(--goldDim);border-radius:13px;padding:9px;box-shadow:0 8px 28px rgba(0,0,0,.6)}
+#talkpop.on{display:block}
+#emotebar{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+#emotebar button{font-size:21px;padding:8px 0;border-radius:9px;cursor:pointer;
+  background:rgba(255,255,255,.06);border:1px solid rgba(220,200,150,.22)}
+#emotebar button:active{background:var(--gold);transform:scale(.93)}
+#chatbox{margin-top:8px;border-top:1px solid rgba(220,200,150,.16);padding-top:8px}
+#chatlog{max-height:132px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;
+  font:500 12px system-ui;color:#dbe7f2}
+#chatlog b{color:var(--gold2);font-weight:700}
+#chatlog .ann{color:#ffd98a}
+#chatrow{display:flex;gap:5px;margin-top:7px}
+#chatin{flex:1;min-width:0;padding:8px 10px;border-radius:8px;font:500 13px system-ui;
+  background:rgba(255,255,255,.07);border:1px solid rgba(220,200,150,.24);color:#eef4fa}
+#chatin:disabled{opacity:.5}
+#chatsend{padding:8px 13px;border-radius:8px;font:700 12px system-ui;color:#1a1204;cursor:pointer;
+  background:linear-gradient(180deg,var(--gold2),var(--gold));border:1px solid #8a7038}
+#chatsend:disabled{opacity:.45}
+@media (max-width:380px){#feed{width:52vw}#talkbtn{width:50px;height:50px;font-size:22px}}
+
+.ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(5,12,20,.78);z-index:6;padding:16px}
+.sheet{width:min(420px,94vw);max-height:92vh;overflow:auto;position:relative;
+  background:linear-gradient(180deg,#13273c,#0a1627);border:1px solid var(--gold);border-radius:16px;
+  padding:26px;box-shadow:0 18px 60px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,232,180,.16)}
+.sheet::after{content:"";position:absolute;inset:6px;border:1px solid rgba(217,182,103,.24);
+  border-radius:11px;pointer-events:none}
+.sheet h1{font:700 32px Georgia,"Iowan Old Style",serif;color:var(--gold2);line-height:1.12;
+  text-shadow:0 2px 14px rgba(217,182,103,.3)}
+.sheet p{color:var(--dim);margin:10px 0 16px;font-size:13.5px}
+.sheet input{width:100%;padding:13px;font:inherit;font-size:16px;color:var(--ink);
+  background:rgba(6,14,24,.8);border:1px solid var(--goldDim);border-radius:9px;outline:0}
+.sheet input::placeholder{color:#5d7280}
+.sheet input:focus{border-color:var(--gold2)}
+.sheet button.big{margin-top:15px;width:100%;padding:14px;font:700 16px system-ui;color:#1a1204;
+  background:linear-gradient(180deg,var(--gold2),var(--gold));border:1px solid #8a7038;
+  border-radius:9px;cursor:pointer;box-shadow:0 5px 18px rgba(217,182,103,.3)}
+#tabs{display:flex;gap:5px;margin:14px 0;background:rgba(6,14,24,.7);border-radius:10px;padding:4px;
+  border:1px solid rgba(217,182,103,.2)}
+#tabs button{flex:1;padding:10px;border:0;border-radius:7px;background:transparent;
+  font:600 13.5px system-ui;color:var(--dim);cursor:pointer}
+#tabs button.on{background:linear-gradient(180deg,rgba(217,182,103,.22),rgba(217,182,103,.1));
+  color:var(--gold2);box-shadow:inset 0 0 0 1px rgba(217,182,103,.35)}
+.pane{display:none}.pane.on{display:block}
+#delays{display:flex;gap:6px;margin-top:8px}
+#delays button{flex:1;padding:10px 4px;font:600 13px system-ui;background:rgba(6,14,24,.7);
+  color:var(--ink);border:1px solid rgba(217,182,103,.25);border-radius:8px;cursor:pointer}
+#delays button.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1204;border-color:#8a7038}
+#code{text-align:center;letter-spacing:6px;text-transform:uppercase;font-weight:700;font-size:21px;color:var(--gold2)}
+#err{color:var(--bad);font-size:12.5px;margin-top:9px;display:none;font-weight:600}
+.rules{background:rgba(6,14,24,.6);border:1px solid rgba(217,182,103,.18);border-radius:11px;
+  padding:12px 14px;margin-top:14px;font-size:12px;color:var(--dim);line-height:1.7}
+.rules b{color:var(--gold2)}
+.levels{display:flex;gap:6px;margin-top:10px}
+.levels div{flex:1;background:rgba(6,14,24,.7);border:1px solid rgba(217,182,103,.22);border-radius:9px;
+  padding:9px 6px;text-align:center;font-size:10.5px;color:var(--dim)}
+.levels div b{display:block;font-size:11.5px;color:var(--gold2);margin-bottom:3px}
+#wait,#elim,#champ{display:none}
+.codebox{display:flex;align-items:center;gap:10px;background:rgba(6,14,24,.8);
+  border:1px dashed var(--gold);border-radius:12px;padding:13px 16px;margin:14px 0}
+.codebox b{font:700 27px Georgia,serif;letter-spacing:6px;color:var(--gold2);flex:1}
+.codebox button{padding:9px 14px;font:600 12.5px system-ui;color:#1a1204;
+  background:linear-gradient(180deg,var(--gold2),var(--gold));border:0;border-radius:8px;cursor:pointer}
+#cnt{font:700 48px Georgia,serif;color:var(--gold2);text-align:center;
+  text-shadow:0 0 26px rgba(217,182,103,.45)}
+.statrow{display:flex;justify-content:space-between;font-size:13px;color:var(--dim);padding:6px 0;
+  border-bottom:1px solid rgba(217,182,103,.16)}
+.statrow b{color:var(--ink)}
+#champList{list-style:none;margin-top:8px}
+#champList li{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;
+  border-bottom:1px solid rgba(217,182,103,.16);color:var(--dim)}
+#champList li:first-child{color:var(--gold2);font-weight:700}
+/* ---------------------------------------------------------------- phones
+   The screen belongs to the garden and to your thumbs. The stats collapse
+   to the only two numbers that matter mid-run - where you are placed, and
+   how long is left - and the rest is one tap away. */
+@media (max-width:620px){
+  :root{--pad:76px;--padGap:9px}
+  #top{left:8px;top:calc(8px + var(--safe-t));padding:0;min-width:0;pointer-events:auto}
+  #topBar{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;
+    background:none;border:0;color:var(--ink);font:inherit}
+  #rankMini{font:800 19px Georgia,serif;color:var(--gold2);letter-spacing:.3px;line-height:1}
+  #timeMini{font:700 15px system-ui;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}
+  #timeMini.low{color:#ff9db0}
+  #topChev{font-size:11px;color:var(--goldDim);transition:transform .18s ease}
+  #top.open #topChev{transform:rotate(180deg)}
+  #topMore{display:none;padding:0 12px 10px;border-top:1px solid rgba(217,182,103,.18);
+    margin-top:2px;padding-top:8px}
+  #top.open #topMore{display:block}
+  #topMore b{font-size:14px}#topMore .row{font-size:11.5px}
+
+  /* standings are a tap, not a permanent panel */
+  #lbBtn{display:block;position:fixed;right:8px;top:calc(8px + var(--safe-t));z-index:4;
+    padding:9px 13px;border-radius:999px;font:700 11.5px system-ui;letter-spacing:.4px;
+    color:var(--gold2);cursor:pointer;
+    background:linear-gradient(180deg,rgba(24,44,66,.92),rgba(10,20,32,.94));
+    border:1px solid var(--goldDim);box-shadow:0 3px 12px rgba(0,0,0,.45)}
+  #lbBtn.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1204}
+  #lb{display:none;right:8px;top:calc(54px + var(--safe-t));width:min(66vw,230px);padding:9px 12px}
+  #lb.on{display:block}
+  #lb li{font-size:12px;padding:4px 0}
+
+  #banner{font-size:22px}
+  .sheet{padding:20px}.sheet h1{font-size:26px}
+  #mini{display:none}                     /* the map button does this job */
+}
+/* a small phone keeps the big pad and gives up width elsewhere */
+@media (max-width:380px){
+  :root{--pad:72px}
+  #lb{width:min(72vw,210px)}
+}
+/* short screens (a phone in landscape) cannot afford a tall pad */
+@media (max-height:520px){
+  :root{--pad:56px;--padGap:6px}
+  #feed{display:none}
+}
+@media (prefers-reduced-motion:reduce){#toast div{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="g"></canvas>
+
+<!-- On a phone the stats collapse to rank and time left; everything else
+     is one tap away. On a larger screen the full panel is always open. -->
+<div id="top" class="hud panel">
+  <button id="topBar" type="button" aria-expanded="false" aria-controls="topMore">
+    <span id="rankMini">-</span>
+    <span id="timeMini">-</span>
+    <span id="topChev" aria-hidden="true">▾</span>
+  </button>
+  <div id="topMore">
+    <b id="stageName">The Last Garden</b>
+    <div class="row" id="timer"></div>
+    <div class="row">Carrying <span id="gold">0</span> · Banked <span id="bankAmt">0</span></div>
+    <div class="row" id="rank"></div>
+    <div class="row" id="dist"></div>
+  </div>
+</div>
+
+<button id="lbBtn" type="button" aria-controls="lb" aria-expanded="false">☰ Standings</button>
+<div id="lb" class="hud panel"><h4 id="lbTitle">STANDINGS</h4><ol id="lbl"></ol><div class="foot" id="lbFoot">Names stay hidden until the semi-final.</div></div>
+
+<canvas id="mini"></canvas>
+<div id="toast"></div>
+<div id="banner"></div>
+<button id="viewbtn" type="button">Map view</button>
+<button id="lootbtn" type="button" aria-pressed="false">○ Treasure</button>
+<!-- the match ticker: what is happening elsewhere in the garden -->
+<div id="feed" aria-live="polite"></div>
+
+<!-- shown once each, the first time a rule actually bites -->
+<div id="teach"></div>
+<div id="state"></div>
+
+<!-- talk: six taps everyone can use, and open chat once the final starts -->
+<div id="talk">
+  <button id="talkbtn" type="button" aria-label="Talk">💬</button>
+  <div id="talkpop">
+    <div id="emotebar"></div>
+    <div id="chatbox">
+      <div id="chatlog"></div>
+      <div id="chatrow">
+        <input id="chatin" maxlength="120" placeholder="Open talk starts in the final" disabled autocomplete="off">
+        <button id="chatsend" type="button" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="pad"><span></span><button data-d="0" aria-label="north">▲</button><span></span><button data-d="3" aria-label="west">◀</button><button data-d="2" aria-label="south">▼</button><button data-d="1" aria-label="east">▶</button></div>
+
+<div id="login" class="ov"><div class="sheet">
+  <h1>The Last Garden</h1>
+  <p>Three levels down to the idol. Gather gold, cross the river, and get as deep as you can — both count.</p>
+  <input id="nm" maxlength="16" placeholder="Your name" autocomplete="off">
+  <div class="levels">
+    <div><b>Forest</b>300 runners</div>
+    <div><b>Ruins</b>top 50</div>
+    <div><b>Temple</b>last 10</div>
+  </div>
+  <div id="tabs">
+    <button id="tabCreate" class="on" type="button">New tournament</button>
+    <button id="tabJoin" type="button">Join by code</button>
+  </div>
+  <div id="paneCreate" class="pane on">
+    <div style="font-size:12.5px;color:var(--dim)">Everyone starts together in:</div>
+    <div id="delays">
+      <button data-s="30" class="on" type="button">30s</button>
+      <button data-s="120" type="button">2m</button>
+      <button data-s="300" type="button">5m</button>
+      <button data-s="900" type="button">15m</button>
+    </div>
+  </div>
+  <div id="paneJoin" class="pane"><input id="code" maxlength="6" placeholder="ABCXYZ" autocomplete="off"></div>
+  <button id="go" class="big" type="button">Enter the garden</button>
+  <button id="practice" class="ghost" type="button">Try it alone first — 90 seconds, nothing at stake</button>
+  <p id="err"></p>
+  <div class="rules">
+    <b>Bank your gold</b> — carry it to the idol and it is safe for good and counts in full. Gold still in your hands counts half and can be taken.<br>
+    <b>Go again</b> — after banking you can set out for more. Every load you run back is locked in.<br>
+    <b>Meeting someone</b> — whoever <b>carries</b> less takes a cut from whoever carries more. Banked gold is untouchable.<br>
+    <b>Sanctuary</b> — inside the green ring around the idol nobody can be robbed, by anyone. Wait about near the idol instead of running for it and you lose the right to take gold at all.<br>
+    <b>Boats</b> — step onto a landing stage and the ferry carries you clear across the world.
+  </div>
+</div></div>
+
+<div id="wait" class="ov"><div class="sheet">
+  <h1 id="waitTitle">Get ready</h1>
+  <p>Everyone in this tournament enters the same world at the same moment.</p>
+  <div class="codebox"><b id="codeShow"></b><button id="copy" type="button">Copy</button></div>
+  <div id="cnt">--</div>
+  <p style="text-align:center;margin-top:4px">until the gates open</p>
+  <div class="statrow"><span>Runners waiting</span><b id="wcount">1</b></div>
+  <div class="statrow"><span>Level</span><b id="wstage">The Forest</b></div>
+</div></div>
+
+<div id="elim" class="ov"><div class="sheet">
+  <h1>Your run ends here</h1>
+  <p id="elimMsg"></p>
+</div></div>
+
+<div id="champ" class="ov"><div class="sheet">
+  <h1 id="champTitle">Tournament over</h1>
+  <p id="champMsg"></p>
+  <ol id="champList"></ol>
+</div></div>
+
+<script src="painted.js"></script>
+<script src="atlas.js"></script>
+<script src="world.js"></script>
+<script src="sim.js"></script>
+<script src="net.js"></script>
+<script>
+'use strict';
+const QS = new URLSearchParams(location.search);
+const SERVER = QS.get('server') || '';
+// A QR on the big screen lands people here with the tournament already
+// chosen, so all that is left to do is type a name.
+const PRESET = (QS.get('code') || '').trim().toUpperCase();
+const $ = id => document.getElementById(id);
+const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
+
+// tile kinds, matching world.py
+const GROUND = 0, WALL = 1, WATER = 2, BRIDGE = 3, DOCK = 4, PROP = 5, SHRINE = 6, FLOWERS = 7;
+const walkable = k => k === GROUND || k === BRIDGE || k === DOCK || k === FLOWERS;
+const opaque = k => k === WALL || k === PROP || k === SHRINE;
+
+const cv = $('g'), ctx = cv.getContext('2d', { alpha: false });
+const mc = $('mini'), mctx = mc.getContext('2d');
+let cw = 0, ch = 0, dpr = 1;
+
+// ---------- game state
+let W = 0, H = 0, grid = null, goal = 0, gx = 0, gy = 0, level = 0, stage = null;
+let chests = new Map(), others = new Map(), docks = [], boats = [];
+let me = { id: 0 }, px = 0, py = 0, seq = 0, lastMove = 0, facing = 2;
+let stageSecs = 0, isPractice = false, stepsLeft = 0;
+let sanctSteps = 4, sanctSet = null, inSanct = false, disarmed = 0;
+// The map is at its most useful as a fast read of the whole world, so
+// treasure detail is off unless somebody asks for it.
+let showLoot = false;
+try { showLoot = localStorage.getItem('garden_loot') === '1'; } catch (e) {}
+let gold = 0, bankAmt = 0, banked = false, finished = false, phase = 'lobby', joined = false, name = '', MI = 110;
+let mode = 'create', delay = 30, roomCode = '', joinCode = '';
+let view = 0;                      // 0 = first person, 1 = over the shoulder, 2 = whole map
+const held = [], pops = [];
+const emotes = new Map();          // id -> { e, t } a bubble over someone's head
+let EMOJI = ['\u{1F44B}', '\u{1F602}', '\u{1F631}', '\u{1F4B0}', '\u{1F3C3}', '\u{1F64F}'];
+let revealFrom = 1, feedLines = [], chatLines = [];
+let goldFlash = 0, badFlash = 0, boatFlash = 0;
+let miniLayer = null;
+
+// camera
+let camX = 0, camY = 0, leadX = 0, leadY = 0;
+let selfX = 0, selfY = 0;   // your own drawn position, eased off the tile you occupy
+const LOOKAHEAD = 1.15;    // tiles the view leans ahead of you while walking
+const chunks = new Map();          // painted tile cache, keyed by chunk
+
+// ---------- helpers
+function hash(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = (h ^ (h >> 13)) * 1274126177 | 0;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+}
+const fmt = s => Math.floor(s / 60) + ':' + String(Math.max(0, s % 60)).padStart(2, '0');
+const rgb = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+function toast(msg, cls) {
+  const d = document.createElement('div'); d.textContent = msg; if (cls) d.className = cls;
+  $('toast').appendChild(d);
+  setTimeout(() => { d.style.opacity = 0; setTimeout(() => d.remove(), 450); }, 2600);
+  while ($('toast').children.length > 3) $('toast').firstChild.remove();
+}
+function banner(html) { const b = $('banner'); b.innerHTML = html; b.style.display = html ? 'block' : 'none'; }
+
+let ac;
+function beep(f0, f1, d, type = 'sine', v = .06, delay = 0) {
+  try {
+    ac = ac || new AudioContext();
+    const t0 = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + d);
+    g.gain.setValueAtTime(v, t0); g.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+    o.connect(g).connect(ac.destination); o.start(t0); o.stop(t0 + d);
+  } catch (e) {}
+}
+
+// ================================================================ canvas sizing
+function resize() {
+  dpr = Math.min(2, devicePixelRatio || 1);
+  cw = innerWidth; ch = innerHeight;
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+  const m = Math.round(Math.min(160, Math.max(96, Math.min(cw, ch) * 0.26)));
+  mc.width = m * dpr; mc.height = m * dpr; mc.style.width = m + 'px'; mc.style.height = m + 'px';
+  chunks.clear();
+}
+addEventListener('resize', resize); resize();
+
+// ================================================================ painted garden view
+// The static garden is painted into 8x8-tile chunks and cached. Walking into
+// a new chunk costs one 64-tile bake instead of repainting the whole screen,
+// and the cache is capped so memory stays bounded on a phone.
+const CHUNK = 8, CHUNK_CAP = 72;
+let chunkT = 0;
+
+function chunkKey(cx, cy) { return cx * 4096 + cy; }
+
+function bakeChunk(cx, cy, T) {
+  // Tall sprites overhang the chunk they stand in, so the canvas carries a
+  // margin on every side and the blit is offset back by it.
+  const padY = Math.ceil(T * 2.6), padX = Math.ceil(T * 1.4);
+  const D = T * 0.46;
+  const cvs = document.createElement('canvas');
+  cvs.width = CHUNK * T + padX * 2;
+  cvs.height = CHUNK * T + padY + Math.ceil(T * 0.4);
+  const c = cvs.getContext('2d');
+  const P = PAINT.PALS[level];
+  const x0 = cx * CHUNK, y0 = cy * CHUNK;
+  const x1 = Math.min(W - 1, x0 + CHUNK - 1), y1 = Math.min(H - 1, y0 + CHUNK - 1);
+  const ox = -x0 * T + padX, oy = -y0 * T + padY;
+
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++)
+      PAINT.paintGround(c, x, y, ox + x * T, oy + y * T, T, grid[y * W + x], P, level);
+
+  PAINT.paintWater(c, grid, W, H, x0, x1, y0, y1, ox, oy, T, P, 0);
+
+  // ---- everything that stands up, back row first so the front overlaps it
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const k = grid[y * W + x], sx = ox + x * T, sy = oy + y * T;
+      if (k === WALL) { PAINT.paintHedge(c, x, y, sx, sy, T, D, P, grid, W, H); continue; }
+      if (k === PROP) {
+        // a PROP tile is either a tree or a piece of garden furniture
+        const r = ATLAS.h2(x, y, 101);
+        const foot = sy + T * 0.82;
+        if (r < 0.62) ATLAS.blit(c, ATLAS.tree(T, P, level, treeKind(x, y, r), x * 7 + y), sx + T * .5, foot);
+        else ATLAS.blit(c, ATLAS.prop(T, P, level, (ATLAS.h2(x, y, 103) * ATLAS.PROP_KINDS) | 0, x + y * 3), sx + T * .5, foot);
+        continue;
+      }
+      if (k === SHRINE) {
+        ATLAS.blit(c, ATLAS.shrine(T, P, level, x + y), sx + T * .5, sy + T * .84);
+        continue;
+      }
+      if (k === GROUND || k === FLOWERS) dressTile(c, x, y, sx, sy, T, P);
+    }
+  }
+  return { cvs, padX, padY, T };
+}
+
+/** Which tree grows here - the mix shifts as the levels do. */
+function treeKind(x, y, r) {
+  const n = ATLAS.h2(x, y, 211);
+  if (level === 1 && n < .26) return 4;            // the ruins keep their dead wood
+  if (level === 2) return n < .30 ? 1 : n < .55 ? 4 : 0;
+  if (n < .18) return 1;                           // cypress
+  if (n < .38) return 2;                           // blossom
+  if (n < .48) return 3;                           // fan palm, near the water
+  if (n < .74) return 0;
+  return 5;
+}
+
+/**
+ * Dressing on open ground. Up to three small things per tile, placed at
+ * sub-tile offsets and drawn smallest-first, which is what stops the turf
+ * reading as empty green paint.
+ */
+function dressTile(c, x, y, sx, sy, T, P) {
+  const n = ATLAS.h2(x, y, 307);
+  if (n > .34) return;                              // two tiles in three stay clear
+  // A second tile's worth is a single tuft of grass; only the rarest get
+  // a real bush or a bloom, which is what keeps flowers feeling like finds.
+  const count = n < .05 ? 2 : 1;
+  const bits = [];
+  for (let i = 0; i < count; i++) {
+    const rx = ATLAS.h2(x, y, 311 + i * 7), ry = ATLAS.h2(x, y, 313 + i * 7);
+    const pick = ATLAS.h2(x, y, 317 + i * 11);
+    const px = sx + T * (.20 + rx * .60), py = sy + T * (.50 + ry * .44);
+    let sp;
+    if (pick < .56) sp = ATLAS.tuft(T, P, level, x * 3 + y * 5 + i);
+    else if (pick < .80) sp = ATLAS.bush(T * .8, P, level, x + y * 2 + i);
+    else if (pick < .92) sp = ATLAS.clump(T, P, level, x * 3 + y * 5 + i);
+    else sp = ATLAS.prop(T * .5, P, level, [6, 7, 8, 9, 10][(pick * 97 | 0) % 5], x + y + i);
+    bits.push([py, px, sp]);
+  }
+  bits.sort((a, b) => a[0] - b[0]);
+  for (const [py, px, sp] of bits) ATLAS.blit(c, sp, px, py);
+}
+
+/** The one-pixel-per-tile picture of the whole level, built on first use. */
+let wholeCvs = null;
+function wholeLayer(P) {
+  if (wholeCvs) return wholeCvs;
+  const cvs = document.createElement('canvas');
+  cvs.width = W; cvs.height = H;
+  const c = cvs.getContext('2d');
+  const img = c.createImageData(W, H);
+  const d = img.data;
+  const rgb = hex => {
+    const v = parseInt(hex.slice(1), 16);
+    return [v >> 16, (v >> 8) & 255, v & 255];
+  };
+  const COL = {
+    [WATER]: rgb(P.water[1]), [BRIDGE]: rgb('#8a6a42'), [DOCK]: rgb('#8a6a42'),
+    [WALL]: rgb(P.hedgeMid), [PROP]: rgb(P.canopy[0]), [SHRINE]: rgb('#d8bc70'),
+    [FLOWERS]: rgb('#c86f9e'), [GROUND]: rgb(P.path[0]),
+  };
+  for (let i = 0; i < W * H; i++) {
+    const c3 = COL[grid[i]] || COL[GROUND];
+    d[i * 4] = c3[0]; d[i * 4 + 1] = c3[1]; d[i * 4 + 2] = c3[2]; d[i * 4 + 3] = 255;
+  }
+  c.putImageData(img, 0, 0);
+  wholeCvs = cvs;
+  return cvs;
+}
+
+function getChunk(cx, cy, T) {
+  if (chunkT !== T) { chunks.clear(); chunkT = T; }
+  const k = chunkKey(cx, cy);
+  let ch2 = chunks.get(k);
+  if (ch2) { chunks.delete(k); chunks.set(k, ch2); return ch2; }   // touch for LRU
+  ch2 = bakeChunk(cx, cy, T);
+  chunks.set(k, ch2);
+  while (chunks.size > CHUNK_CAP) chunks.delete(chunks.keys().next().value);
+  return ch2;
+}
+
+function drawTopDown(now, whole) {
+  const t = now / 1000;
+  const P = PAINT.PALS[level];
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  let T, ox, oy;
+  if (whole) {
+    T = Math.max(2, Math.min((cw - 20) / W, (ch - 150) / H));
+    ox = (cw - W * T) / 2; oy = (ch - H * T) / 2 + 10;
+  } else {
+    T = Math.max(26, Math.min(54, Math.round(Math.min(cw, ch) / 12)));
+    ox = cw / 2 - camX * T; oy = ch / 2 - camY * T;
+    // never pan past the edge of the world - the camera stops at the boundary
+    ox = W * T > cw ? clamp(ox, cw - W * T, 0) : (cw - W * T) / 2;
+    oy = H * T > ch ? clamp(oy, ch - H * T, 0) : (ch - H * T) / 2;
+  }
+
+  ctx.fillStyle = level === 2 ? '#17120c' : level === 1 ? '#3a3524' : '#22402a';
+  ctx.fillRect(0, 0, cw, ch);
+
+  if (whole) {
+    // The whole garden at a glance. The terrain never changes during a
+    // level, so it is painted once at one pixel per tile and then scaled -
+    // one drawImage a frame instead of several thousand rectangles.
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(wholeLayer(P), ox, oy, W * T, H * T);
+    ctx.imageSmoothingEnabled = true;
+  } else {
+    const cx0 = Math.max(0, Math.floor(-ox / T / CHUNK)), cx1 = Math.floor((cw - ox) / T / CHUNK);
+    const cy0 = Math.max(0, Math.floor(-oy / T / CHUNK)), cy1 = Math.floor((ch - oy) / T / CHUNK);
+    const maxCX = Math.ceil(W / CHUNK) - 1, maxCY = Math.ceil(H / CHUNK) - 1;
+    for (let cy = cy0; cy <= Math.min(maxCY, cy1); cy++) {
+      for (let cx = cx0; cx <= Math.min(maxCX, cx1); cx++) {
+        const ck = getChunk(cx, cy, T);
+        ctx.drawImage(ck.cvs, ox + cx * CHUNK * T - ck.padX, oy + cy * CHUNK * T - ck.padY);
+      }
+    }
+  }
+
+  const x0 = Math.max(0, Math.floor(-ox / T)), x1 = Math.min(W - 1, Math.ceil((cw - ox) / T));
+  const y0 = Math.max(0, Math.floor(-oy / T)), y1 = Math.min(H - 1, Math.ceil((ch - oy) / T));
+
+  // the sanctuary: ground nobody may be robbed on
+  if (!whole && sanctSet && sanctSet.size) {
+    const pul = .5 + .5 * Math.sin(t * 1.5);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(120,230,150,${.055 + pul * .03})`;
+    for (const tt of sanctSet) {
+      const x = tt % W, y = (tt / W) | 0;
+      if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) continue;
+      ctx.fillRect(ox + x * T, oy + y * T, T + 1, T + 1);
+    }
+    ctx.restore();
+    // a dashed line around its edge, so you can see exactly where safety ends
+    ctx.save();
+    ctx.strokeStyle = `rgba(150,245,175,${.35 + pul * .2})`;
+    ctx.lineWidth = Math.max(1.5, T * .075);
+    ctx.setLineDash([T * .34, T * .26]);
+    ctx.lineDashOffset = -t * T * .5;
+    ctx.beginPath();
+    for (const tt of sanctSet) {
+      const x = tt % W, y = (tt / W) | 0;
+      if (x < x0 - 2 || x > x1 + 2 || y < y0 - 2 || y > y1 + 2) continue;
+      const sx = ox + x * T, sy = oy + y * T;
+      if (!sanctSet.has(tt - W)) { ctx.moveTo(sx, sy); ctx.lineTo(sx + T, sy); }
+      if (!sanctSet.has(tt + W)) { ctx.moveTo(sx, sy + T); ctx.lineTo(sx + T, sy + T); }
+      if (x > 0 && !sanctSet.has(tt - 1)) { ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + T); }
+      if (x < W - 1 && !sanctSet.has(tt + 1)) { ctx.moveTo(sx + T, sy); ctx.lineTo(sx + T, sy + T); }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // the moving surface of the water, over the baked chunks
+  if (!whole) PAINT.paintWaterLive(ctx, grid, W, H, x0, x1, y0, y1, ox, oy, T, P, t);
+
+  // live light from the shrines, over the baked chunks
+  if (!whole) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (grid[y * W + x] !== SHRINE) continue;
+        const pul = .5 + .5 * Math.sin(t * 1.8 + x);
+        glow(ox + (x + .5) * T, oy + (y + .1) * T, T * (1.7 + pul * .2),
+             '255,214,132', .10 + pul * .06);
+      }
+    }
+  }
+
+  // ---- the idol: a baked sprite under a breathing halo of light
+  if (!whole && gx >= x0 - 3 && gx <= x1 + 3 && gy >= y0 - 3 && gy <= y1 + 3) {
+    const ix = ox + (gx + .5) * T, iy = oy + (gy + .92) * T;
+    glow(ix, iy - T * 1.0, T * (2.6 + .3 * Math.sin(t * 1.4)), '255,224,140', .34);
+    ATLAS.blit(ctx, ATLAS.idol(T), ix, iy);
+    glow(ix, iy - T * 1.5, T * (.9 + .12 * Math.sin(t * 2.2)), '255,246,200', .30);
+  }
+
+  for (const c of whole ? [] : chests.values()) {
+    if (c.x < x0 - 1 || c.x > x1 + 1 || c.y < y0 - 1 || c.y > y1 + 1) continue;
+    const bx = ox + (c.x + .5) * T, by = oy + (c.y + .88) * T;
+    const pul = .5 + .5 * Math.sin(t * 2.4 + c.x + c.y);
+    glow(bx, by - T * .3, T * (c.bonus ? 1.5 : 1.0),
+         c.bonus ? '196,150,255' : '255,206,110', (c.bonus ? .34 : .22) + pul * .12);
+    // a chest bobs very slightly, which is what makes it catch the eye
+    ATLAS.blit(ctx, ATLAS.chest(T, c.bonus), bx, by - Math.sin(t * 2 + c.x) * T * .03);
+  }
+  for (const b of whole ? [] : boats) {
+    if (b.x < x0 - 1 || b.x > x1 + 1 || b.y < y0 - 1 || b.y > y1 + 1) continue;
+    const bx = ox + (b.x + .5) * T;
+    const by = oy + (b.y + .86) * T + Math.sin(t * 1.3 + b.x) * T * .045;
+    ctx.save();
+    ctx.translate(bx, by); ctx.rotate(Math.sin(t * .9 + b.y) * .035); ctx.translate(-bx, -by);
+    ATLAS.blit(ctx, ATLAS.boat(T, b.x + b.y), bx, by);
+    ctx.restore();
+  }
+
+  // everyone on the path, far rows first so nearer figures overlap them
+  const figures = [];
+  for (const o of others.values()) {
+    figures.push({ x: o.dx, y: o.dy, me: false, id: o.id,
+                   name: o.name, face: o.face,
+                   moving: Math.abs(o.x - o.dx) + Math.abs(o.y - o.dy) > .015 });
+  }
+  figures.push({ x: selfX, y: selfY, me: true, id: me.id,
+                 face: facing, moving: held.length > 0 });
+  figures.sort((a, b) => a.y - b.y);
+
+  // ---- the whole-map view is a map, not a scene: at two pixels a tile a
+  // figure sprite is invisible, so people get proper map markers instead
+  if (whole) {
+    drawMapMarkers(figures, ox, oy, T, t);
+    return;
+  }
+
+  const FT = T * 1.15;
+  for (const f of figures) {
+    if (f.x < x0 - 2 || f.x > x1 + 2 || f.y < y0 - 2 || f.y > y1 + 2) continue;
+    const sx = ox + (f.x + .5) * T, sy = oy + (f.y + .94) * T;
+    // the walk cycle advances with the clock while the figure is moving, and
+    // settles on the standing frame the moment it stops
+    const fr = f.moving ? ((t * 7 + f.x + f.y) | 0) % ATLAS.WALK_FRAMES : 0;
+    if (f.me) ATLAS.blit(ctx, ATLAS.marker(T), sx, sy + T * .1);
+    ATLAS.blit(ctx, ATLAS.person(FT, f.face || 0, fr,
+                                 f.me ? '#b8452e' : '#3f4f78',
+                                 f.me ? '#ffd45e' : '#8fa4d6', 0),
+               sx, sy);
+    const top = sy - FT * 1.62;
+    if (f.me) PAINT.paintPlate(ctx, sx, top, banked ? 'You ✓ ' + bankAmt : 'You', '#ffd45e', T);
+    else if (f.name) PAINT.paintPlate(ctx, sx, top, f.name, '#cfe0ff', T);
+    const em = emotes.get(f.id);
+    if (em && now - em.t < 2000) drawEmote(sx + T * .5, top - T * .95, em.e, (now - em.t) / 2000, T);
+  }
+
+  PAINT.paintAir(ctx, ox, oy, T, W, H, camX, camY, t, level, cw, ch);
+  grade();
+}
+
+/**
+ * Markers for the whole-map view.
+ *
+ * Sized in screen pixels rather than tiles, because the map can be two
+ * pixels a tile and a marker that shrinks with it is no marker at all. You
+ * get a pin you cannot miss, the idol gets a gold star, and a dashed line
+ * runs between them so the way to go is a thing you see rather than work out.
+ */
+function drawMapMarkers(figures, ox, oy, T, t) {
+  const px2 = x => ox + (x + .5) * T, py2 = y => oy + (y + .5) * T;
+  const S = Math.max(13, Math.min(26, Math.min(cw, ch) * .036));   // marker size
+  const mx = px2(selfX), my = py2(selfY);
+  const ix = px2(gx), iy = py2(gy);
+  const pul = .5 + .5 * Math.sin(t * 2.2);
+
+  // ---- the treasure worth walking to.
+  //
+  // A hundred faint specks tells you nothing, so the map picks out a few
+  // chests that are both close enough to reach and worth the trip, and
+  // draws those large with what they hold. Everything else stays a quiet
+  // speck, there for texture rather than for reading.
+  const HILITE = 6, REACH = 26;
+  const worth = [];
+  for (const c of showLoot ? chests.values() : []) {
+    const d = Math.abs(c.x - selfX) + Math.abs(c.y - selfY);
+    if (d > REACH) continue;
+    // a rich chest a little further off beats a poor one underfoot
+    worth.push({ c, d, rank: (c.v || 0) * (c.bonus ? 2.2 : 1) - d * 0.55 });
+  }
+  worth.sort((a, b) => b.rank - a.rank);
+  // Spread them out: two coins on top of each other hide each other's label
+  // and say nothing extra, so a richer one wins its patch of map outright.
+  // the pin and the star hold their own ground: a coin tucked under either
+  // is a label nobody can read, and a chest you are standing on needs no map
+  const gap = S * 1.5, shown = [];
+  const reserved = [{ x: mx, y: my - S * .8 }, { x: ix, y: iy }];
+  for (const e of worth) {
+    if (shown.length >= HILITE) break;
+    const x = px2(e.c.x), y = py2(e.c.y);
+    if (shown.some(o => Math.abs(o.x - x) < gap && Math.abs(o.y - y) < gap)) continue;
+    if (reserved.some(o => Math.abs(o.x - x) < gap * 1.15 && Math.abs(o.y - y) < gap * 1.15)) continue;
+    shown.push({ e, x, y });
+  }
+  const picked = new Set(shown.map(o => o.e.c));
+
+  for (const c of chests.values()) {
+    if (picked.has(c)) continue;
+    const x = px2(c.x), y = py2(c.y);
+    ctx.fillStyle = c.bonus ? 'rgba(206,166,255,.75)' : 'rgba(236,186,92,.42)';
+    ctx.beginPath(); ctx.arc(x, y, S * (c.bonus ? .18 : .11), 0, 6.283); ctx.fill();
+  }
+  for (const b of boats) {
+    const x = px2(b.x), y = py2(b.y);
+    ctx.fillStyle = 'rgba(150,205,235,.9)';
+    ctx.beginPath();
+    ctx.moveTo(x - S * .26, y - S * .12); ctx.lineTo(x + S * .26, y - S * .12);
+    ctx.lineTo(x, y + S * .24); ctx.closePath(); ctx.fill();
+  }
+
+  // ---- other runners: small, so they never compete with you
+  for (const f of figures) {
+    if (f.me) continue;
+    const x = px2(f.x), y = py2(f.y);
+    ctx.fillStyle = 'rgba(10,18,28,.55)';
+    ctx.beginPath(); ctx.arc(x, y, S * .34, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#8fa4d6';
+    ctx.beginPath(); ctx.arc(x, y, S * .25, 0, 6.283); ctx.fill();
+  }
+
+  // ---- the picked chests, large, labelled, and pulsing gently
+  for (const o of shown) {
+    const c = o.e.c, x = o.x, y = o.y;
+    const r = S * (c.bonus ? .62 : .48);
+    const gl = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+    gl.addColorStop(0, c.bonus ? 'rgba(198,150,255,.45)' : 'rgba(255,206,110,.40)');
+    gl.addColorStop(1, 'rgba(255,206,110,0)');
+    ctx.fillStyle = gl;
+    ctx.beginPath(); ctx.arc(x, y, r * 2.4, 0, 6.283); ctx.fill();
+
+    // a little coin, rimmed dark so it holds up over pale paths
+    const g = ctx.createLinearGradient(x, y - r, x, y + r);
+    if (c.bonus) { g.addColorStop(0, '#e6ccff'); g.addColorStop(1, '#9a6fd6'); }
+    else { g.addColorStop(0, '#ffe9a8'); g.addColorStop(1, '#d99a26'); }
+    ctx.fillStyle = g;
+    ctx.strokeStyle = 'rgba(30,20,6,.78)';
+    ctx.lineWidth = Math.max(1.4, S * .09);
+    ctx.beginPath();
+    ctx.arc(x, y, r * (1 + pul * .06), 0, 6.283);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath(); ctx.ellipse(x - r * .28, y - r * .3, r * .26, r * .16, -.5, 0, 6.283); ctx.fill();
+
+    // What it holds, on a dark chip. The chip sits on the side away from
+    // your pin, so a coin just above you does not drop its label onto it.
+    const label = String(c.v || '');
+    if (label && S > 14) {
+      ctx.font = `800 ${Math.round(S * .52)}px system-ui`;
+      ctx.textAlign = 'center';
+      const w2 = ctx.measureText(label).width;
+      const above = y < my;
+      const ly = above ? y - r - S * .46 : y + r + S * .46;
+      ctx.fillStyle = 'rgba(8,16,24,.85)';
+      roundRectPath(ctx, x - w2 / 2 - S * .2, ly - S * .38, w2 + S * .4, S * .7, S * .24);
+      ctx.fill();
+      ctx.fillStyle = c.bonus ? '#e0c6ff' : '#ffd45e';
+      ctx.fillText(label, x, ly + S * .16);
+    }
+  }
+
+  // ---- the idol: a gold star you can pick out at a glance
+  ctx.save();
+  const ig = ctx.createRadialGradient(ix, iy, 0, ix, iy, S * (1.5 + pul * .25));
+  ig.addColorStop(0, 'rgba(255,226,140,.55)');
+  ig.addColorStop(1, 'rgba(255,226,140,0)');
+  ctx.fillStyle = ig;
+  ctx.beginPath(); ctx.arc(ix, iy, S * (1.5 + pul * .25), 0, 6.283); ctx.fill();
+  ctx.translate(ix, iy);
+  ctx.fillStyle = '#ffd45e';
+  ctx.strokeStyle = 'rgba(60,40,10,.75)';
+  ctx.lineWidth = Math.max(1.4, S * .09);
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? S * .38 : S * .86, an = -Math.PI / 2 + i * Math.PI / 5;
+    const fx = Math.cos(an) * r, fy = Math.sin(an) * r;
+    i ? ctx.lineTo(fx, fy) : ctx.moveTo(fx, fy);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // ---- you: a pin whose point sits on your exact tile
+  ctx.save();
+  // a pulse going out, so the eye finds it even on a busy map
+  ctx.strokeStyle = `rgba(255,120,90,${.5 - pul * .38})`;
+  ctx.lineWidth = Math.max(2, S * .14);
+  ctx.beginPath(); ctx.arc(mx, my, S * (.9 + pul * .85), 0, 6.283); ctx.stroke();
+
+  ctx.fillStyle = 'rgba(0,0,0,.4)';
+  ctx.beginPath(); ctx.ellipse(mx, my + S * .1, S * .42, S * .16, 0, 0, 6.283); ctx.fill();
+
+  const top = my - S * 1.5;
+  const g = ctx.createLinearGradient(mx, top - S * .6, mx, top + S * .6);
+  g.addColorStop(0, '#ff9b72'); g.addColorStop(1, '#c4402a');
+  ctx.fillStyle = g;
+  ctx.strokeStyle = '#fff3d8';
+  ctx.lineWidth = Math.max(1.6, S * .11);
+  ctx.beginPath();                                  // teardrop, point downward
+  ctx.arc(mx, top, S * .62, Math.PI * .86, Math.PI * .14);
+  ctx.lineTo(mx, my);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff3d8';
+  ctx.beginPath(); ctx.arc(mx, top, S * .25, 0, 6.283); ctx.fill();
+
+  // which way you are facing, as a small tick off the pin
+  const fa = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][facing] || 0;
+  ctx.translate(mx, top); ctx.rotate(fa);
+  ctx.fillStyle = '#fff3d8';
+  ctx.beginPath();
+  ctx.moveTo(S * .92, 0); ctx.lineTo(S * .52, -S * .26); ctx.lineTo(S * .52, S * .26);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+}
+
+function roundRectPath(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+/** An additive pool of light. Used for the idol, chests and shrine lamps. */
+function glow(x, y, r, rgb, a) {
+  if (r <= 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(${rgb},${a})`);
+  g.addColorStop(.45, `rgba(${rgb},${a * .4})`);
+  g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * The finishing pass: one warm-to-cool wash per level, then a vignette.
+ * It is two rectangles of work, and it does more for how the garden feels
+ * than anything else in this file.
+ */
+/**
+ * The light moves while you play. Each level has a light it opens in and a
+ * light it closes in, and the grade walks between them as the clock runs
+ * down - so a three-minute match feels like part of a day rather than a
+ * fixed tableau. It also tells you, without a glance at the timer, that
+ * time is going.
+ */
+const GRADE = [
+  // The Forest: mid-morning into low golden afternoon
+  { dawn: { a: [255, 226, 150, .08], b: [ 30,  74, 120, .09], v: [ 8, 24, 12, .40] },
+    dusk: { a: [255, 150,  48, .34], b: [ 30,  36,  92, .30], v: [10, 14, 30, .68] },
+    late: [58, 40, 92, .20] },
+  // The Ruins: overcast grey-green souring toward storm light
+  { dawn: { a: [216, 190, 140, .06], b: [ 54,  74,  64, .11], v: [18, 22, 14, .48] },
+    dusk: { a: [190, 130,  80, .26], b: [ 38,  46,  58, .34], v: [10, 12, 16, .70] },
+    late: [40, 44, 58, .22] },
+  // The Temple: torchlit throughout, deepening as the braziers take over
+  { dawn: { a: [255, 184,  90, .09], b: [ 40,  22,  58, .11], v: [ 6,  4,  2, .54] },
+    dusk: { a: [255, 138,  36, .32], b: [ 22,   8,  40, .32], v: [ 2,  0,  0, .78] },
+    late: [30, 10, 44, .26] },
+];
+let dayT = 0;                    // 0 at the start of the level, 1 at the end
+
+function lerpRGBA(a, b, t) {
+  return `rgba(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},` +
+         `${Math.round(a[2] + (b[2] - a[2]) * t)},${(a[3] + (b[3] - a[3]) * t).toFixed(3)})`;
+}
+
+function grade() {
+  const G = GRADE[level] || GRADE[0];
+  const t = dayT * dayT * (3 - 2 * dayT);          // ease, so the turn is gradual
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  const wash = ctx.createLinearGradient(0, 0, cw * .6, ch);
+  wash.addColorStop(0, lerpRGBA(G.dawn.a, G.dusk.a, t));
+  wash.addColorStop(1, lerpRGBA(G.dawn.b, G.dusk.b, t));
+  ctx.fillStyle = wash; ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
+
+  // In the last third the light actually goes: a flat cool tint over
+  // everything, so you can feel the clock without reading it.
+  if (G.late && t > .62) {
+    const k = (t - .62) / .38;
+    const L = G.late;
+    ctx.fillStyle = `rgba(${L[0]},${L[1]},${L[2]},${(L[3] * k).toFixed(3)})`;
+    ctx.fillRect(0, 0, cw, ch);
+  }
+
+  const vg = ctx.createRadialGradient(cw / 2, ch * .46, Math.min(cw, ch) * (.34 - t * .10),
+                                      cw / 2, ch / 2, Math.max(cw, ch) * .74);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, lerpRGBA(G.dawn.v, G.dusk.v, t));
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, cw, ch);
+}
+
+// ---------- minimap
+/**
+ * The tiles within sanctuary range of the idol, by walking steps rather than
+ * straight-line distance - so a hedge between you and the idol means you are
+ * not inside it yet. Drawn on the ground so the safe ground is obvious
+ * before you need it.
+ */
+function buildSanctuary() {
+  sanctSet = new Set();
+  if (!grid) return;
+  const q = [goal], seen = new Set([goal]);
+  let d = 0, edge = q.length;
+  while (q.length && d <= sanctSteps) {
+    const t = q.shift();
+    sanctSet.add(t);
+    const x = t % W, y = (t / W) | 0;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX[k], ny = y + DY[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const n = ny * W + nx;
+      if (seen.has(n) || !walkable(grid[n])) continue;
+      seen.add(n); q.push(n);
+    }
+    if (--edge === 0) { edge = q.length; d++; }
+  }
+}
+
+function buildMini() {
+  miniLayer = document.createElement('canvas');
+  miniLayer.width = W; miniLayer.height = H;
+  const c = miniLayer.getContext('2d'), im = c.createImageData(W, H), d = im.data;
+  for (let i = 0; i < W * H; i++) {
+    const k = grid[i], o = i * 4;
+    let r, g, b;
+    if (k === WATER) { r = 63; g = 134; b = 184; }
+    else if (k === BRIDGE || k === DOCK) { r = 156; g = 122; b = 70; }
+    else if (k === FLOWERS) { r = 200; g = 111; b = 158; }
+    else if (opaque(k)) { r = level === 2 ? 91 : 74; g = level === 2 ? 76 : 139; b = level === 2 ? 56 : 78; }
+    else { r = 232; g = 224; b = 190; }
+    d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+  }
+  c.putImageData(im, 0, 0);
+}
+function drawMini(t) {
+  if (!miniLayer) return;
+  const S = mc.width, k = S / W;
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  mctx.imageSmoothingEnabled = false;
+  mctx.drawImage(miniLayer, 0, 0, S, S);
+  const pul = .5 + .5 * Math.sin(t * 3.2);
+  for (const b of boats) {
+    mctx.fillStyle = '#5c3b1e';
+    mctx.fillRect((b.x - .5) * k, (b.y - .5) * k, Math.max(2, k * 2), Math.max(2, k * 2));
+  }
+  mctx.fillStyle = `rgba(255,214,110,${.5 + .5 * pul})`;
+  mctx.beginPath(); mctx.arc((gx + .5) * k, (gy + .5) * k, Math.max(3.5, k * 2.6), 0, 6.283); mctx.fill();
+  mctx.fillStyle = '#8c6a20';
+  mctx.beginPath(); mctx.arc((gx + .5) * k, (gy + .5) * k, Math.max(1.8, k * 1.2), 0, 6.283); mctx.fill();
+  mctx.fillStyle = '#2f7a3a';
+  mctx.beginPath(); mctx.arc((px + .5) * k, (py + .5) * k, Math.max(3, k * 1.8), 0, 6.283); mctx.fill();
+  mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5; mctx.stroke();
+}
+
+// ================================================================ networking
+let ws, hb;
+const send = o => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+/**
+ * On fest wifi a socket drops for all sorts of dull reasons - a locked
+ * phone, a walk past a thick wall, a switch to WhatsApp and back. None of
+ * those should cost anyone their run, so once we hold a resume key we come
+ * back as the same runner rather than joining as a new one. The server
+ * keeps your gold and your place for a couple of minutes.
+ */
+let resumeKey = '', tries = 0, reconnecting = false;
+try { resumeKey = localStorage.getItem('garden_key') || ''; } catch (e) {}
+
+function connect() {
+  const base = SERVER ? (SERVER.startsWith('ws') ? SERVER : 'ws://' + SERVER)
+                      : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  let sock;
+  try { sock = Net.socket(base); } catch (e) { retry(); return; }   // a WebSocket, or the browser-mode stand-in (net.js)
+  ws = sock;
+  ws.onopen = () => {
+    tries = 0;
+    if (resumeKey && roomCode) send({ t: 'resume', code: roomCode, key: resumeKey });
+    else send({ t: 'hi', name, mode, delay, code: joinCode });
+    clearInterval(hb); hb = setInterval(() => send({ t: 'pg' }), 20000);
+  };
+  ws.onmessage = e => handle(JSON.parse(e.data));
+  ws.onclose = () => {
+    joined = false;
+    clearInterval(hb);
+    if (resumeKey && roomCode) retry();
+    else if (roomCode) retry();
+  };
+  ws.onerror = () => {};
+}
+
+function retry() {
+  // back off, but never so far that someone is stuck staring at a dead screen
+  const wait = Math.min(6000, 700 * Math.pow(1.7, tries++));
+  if (!reconnecting) {
+    reconnecting = true;
+    banner('Reconnecting<small>Your gold and your place are being held</small>');
+  }
+  setTimeout(connect, wait);
+}
+
+function handle(m) {
+  switch (m.t) {
+    case 'w':
+      if (m.cfg && m.cfg.emotes) { EMOJI = m.cfg.emotes; buildEmoteBar(); }
+      if (m.cfg && typeof m.cfg.revealFrom === 'number') revealFrom = m.cfg.revealFrom;
+      if (m.cfg && m.cfg.sanct) sanctSteps = m.cfg.sanct;
+      me.id = m.id; roomCode = m.code; MI = m.cfg.mi; joined = true;
+      mode = 'join'; joinCode = roomCode;
+      if (m.key) { resumeKey = m.key; try { localStorage.setItem('garden_key', m.key); } catch (e) {} }
+      setStage(m.stage);
+      $('login').style.display = 'none';
+      if (reconnecting) {
+        reconnecting = false;
+        banner('');
+        toast(m.resumed ? 'Back in - nothing was lost' : 'Reconnected', 'good');
+      }
+      isPractice = !!m.practice;
+      if (m.ph === 'lobby') { $('wait').style.display = 'flex'; $('codeShow').textContent = roomCode; }
+      else ['wait'].forEach(id => $(id).style.display = 'none');
+      break;
+    case 'lobby':
+      roomCode = m.code; $('codeShow').textContent = roomCode;
+      $('cnt').textContent = fmt(m.startIn); $('wcount').textContent = m.n;
+      setStage(m.stage); $('wstage').textContent = m.stage.name;
+      $('waitTitle').textContent = m.stage.idx > 0 ? 'Next: ' + m.stage.name : 'Get ready';
+      break;
+    case 'err':
+      if (reconnecting) {
+        reconnecting = false; banner('');
+        resumeKey = ''; roomCode = '';
+        try { localStorage.removeItem('garden_key'); } catch (e) {}
+        $('login').style.display = 'flex';
+      }
+      $('err').textContent = m.msg; $('err').style.display = 'block';
+      if (ws) { ws.onclose = null; ws.close(); }
+      joined = false; $('wait').style.display = 'none'; $('login').style.display = 'flex';
+      break;
+    case 'n': onLevelStart(m); break;
+    case 'p': onPos(m); break;
+    case 'o': onOthers(m.l); break;
+    case 'chest': onChest(m); break;
+    case 'chestAdd':
+      (m.l || []).forEach(([id, t, v, bonus]) =>
+        chests.set(id, { x: t % W, y: (t / W) | 0, v, bonus: !!bonus }));
+      if (m.l && m.l.length && m.l[0][3]) toast('The idol scatters rich chests!', 'good');
+      break;
+    case 'banked':
+      banked = true; bankAmt = m.bank || 0;
+      $('bankAmt').textContent = bankAmt;
+      if (m.added > 0) {
+        toast(`Banked ${m.added} gold — safe for good`, 'good');
+        pops.push({ text: '\u2713 ' + m.added + ' banked', t: performance.now(), good: true });
+        goldFlash = 1;
+        [660, 880, 1170].forEach((f, i) => beep(f, f * 1.01, .22, 'triangle', .05, i * .07));
+      } else {
+        toast('The idol will keep whatever you bring back', 'good');
+      }
+      break;
+    case 'em':
+      emotes.set(m.id, { e: m.e, t: performance.now() });
+      break;
+    case 'feed': pushFeed(m.x); break;
+    case 'say': pushChat(m.n, m.x); break;
+    case 'sayErr': toast(m.msg, 'bad'); break;
+    case 'ann':
+      pushChat('Organiser', m.x, true);
+      banner('<b>' + esc(m.x) + '</b>');
+      setTimeout(() => { if (phase === 'play') banner(''); }, 6000);
+      beep(523, 784, .4, 'triangle', .07);
+      break;
+    case 'safe':
+      if (m.why === 'sanctuary') {
+        toast('Sanctuary \u2014 no gold changes hands here', 'good');
+        teach('sanct', 'The sanctuary',
+          'Close to the idol nobody can be robbed, by anyone. Get inside the green ring and your gold is safe while you walk the last few steps in.');
+      } else {
+        toast('They had been waiting too long to take anything', 'good');
+        teach('lurk', 'Waiting disarms you',
+          'Hang about near the idol instead of running for it and you cannot take gold from anyone. Ambushing runners on their way in is not a strategy.');
+      }
+      break;
+    case 'loot': onLoot(m); break;
+    case 'm': onMeta(m); break;
+    case 'reached': if (m.id !== me.id) toast('Someone reached the idol'); break;
+    case 'qualified':
+      banner(''); toast('You go through to ' + m.stage + '!', 'good');
+      $('wait').style.display = 'flex'; beep(523, 1046, .35, 'triangle', .07);
+      break;
+    case 'eliminated':
+      $('elimMsg').textContent = `You finished #${m.rank} in ${m.stage} with ${m.money} gold`
+        + (m.bank ? ` (${m.bank} of it banked)` : '')
+        + `, ${m.prog}% of the way to the idol — ${m.score} points.`;
+      $('elim').style.display = 'flex'; beep(420, 160, .45, 'triangle', .05);
+      break;
+    case 'tourEnd':
+      if (m.practice) {
+        $('champTitle').textContent = 'Practice over';
+        $('champMsg').textContent =
+          `You scored ${m.score}, banked and carried ${m.money} gold, and got ` +
+          `${m.prog}% of the way to the idol. Reload to join a real tournament.`;
+        $('champList').textContent = '';
+        $('champ').style.display = 'flex';
+        phase = 'done';
+        beep(523, 784, .35, 'triangle', .06);
+        break;
+      }
+      $('champTitle').textContent = m.champion ? m.champion + ' reaches the idol first' : 'Tournament over';
+      $('champMsg').textContent = 'Final standings:';
+      const cl = $('champList'); cl.textContent = '';
+      (m.top || []).forEach((r, i) => {
+        const li = document.createElement('li');
+        const a = document.createElement('span'), b = document.createElement('span');
+        a.textContent = `#${i + 1}  ${r[0]}`; b.textContent = `${r[1]} pts · ${r[2]}g`;
+        li.append(a, b); cl.appendChild(li);
+      });
+      $('champ').style.display = 'flex';
+      [523, 659, 784, 1046].forEach((f, i) => beep(f, f * 1.01, .3, 'triangle', .06, i * .1));
+      break;
+  }
+}
+
+function setStage(s) {
+  stage = s;
+  $('stageName').textContent = s.name;
+  $('lbTitle').textContent = 'STANDINGS · ' + s.name.toUpperCase();
+  $('lbFoot').style.display = s.reveal ? 'none' : 'block';
+}
+
+function onLevelStart(m) {
+  setStage(m.stage);
+  W = m.W; H = m.H; goal = m.goal; gx = goal % W; gy = (goal / W) | 0; level = m.level | 0;
+  const g = new Uint8Array(W * H);
+  for (let i = 0; i < g.length; i++) g[i] = m.g.charCodeAt(i) - 48;
+  grid = g;
+  chests = new Map();
+  (m.chests || []).forEach(([id, t, v]) => chests.set(id, { x: t % W, y: (t / W) | 0, v }));
+  docks = m.docks || [];
+  boats = [];
+  docks.forEach(([a, b]) => {
+    boats.push({ x: a % W, y: (a / W) | 0 });
+    boats.push({ x: b % W, y: (b / W) | 0 });
+  });
+  others.clear(); pops.length = 0; emotes.clear();
+  feedLines = []; chatLines = []; renderFeed(); $('chatlog').textContent = '';
+  setChatEnabled(m.stage.idx === 2);
+  ATLAS.clear();                     // sprites are baked per level and per size
+  gold = 0; bankAmt = 0; banked = false; finished = false; phase = 'play';
+  stageSecs = m.secs || 180; dayT = 0;
+  $('gold').textContent = '0'; $('bankAmt').textContent = '0';
+  ['wait', 'elim', 'champ'].forEach(id => $(id).style.display = 'none');
+  banner('');
+  buildMini(); chunks.clear(); wholeCvs = null;
+  buildSanctuary();
+  inSanct = false; disarmed = 0;
+  toast((isPractice ? 'Practice \u2014 ' : '') + m.stage.name + ' \u2014 find the idol');
+  beep(392, 587, .3, 'triangle', .05);
+}
+
+function onPos(m) {
+  const jump = m.f || m.boat;
+  px = m.x; py = m.y;
+  if (jump) { camX = px + .5; camY = py + .5; selfX = px; selfY = py; leadX = leadY = 0; }
+  if (typeof m.face === 'number') facing = m.face;
+  gold = m.money; bankAmt = m.bank || 0; banked = bankAmt > 0;
+  stepsLeft = m.left || 0;
+  $('gold').textContent = gold; $('bankAmt').textContent = bankAmt;
+  $('dist').innerHTML = gold === 0
+    ? (banked ? '<span id="banked">All safe \u2713</span> · go gather more'
+              : `${m.prog}% there · ${m.left} steps to the idol`)
+    : `${m.left} steps to the idol · carried gold is at risk, and worth half`;
+  if (m.safe !== undefined || m.lurk !== undefined) setSafety(m);
+  if (m.boat) {
+    toast('The ferry carries you across', 'boat'); boatFlash = 1;
+    beep(220, 440, .5, 'sine', .06);
+    teach('ferry', 'Ferry landings',
+      'Stepping onto a jetty sails you to its partner across the map. Much faster than walking \u2014 look for the little boats.');
+  }
+  checkNearDock();
+  if (m.fin && !finished) {
+    finished = true;
+    banner('You reached the idol<small>That gold is safe. Go gather more and run it back.</small>');
+    setTimeout(() => { if (phase === 'play') banner(''); }, 4200);
+    [523, 659, 784, 1046].forEach((f, i) => beep(f, f * 1.01, .28, 'triangle', .06, i * .09));
+  }
+}
+
+/** A nudge when a jetty is within a step or two, because nothing else says so. */
+let dockHint = 0;
+function checkNearDock() {
+  if (!boats.length || performance.now() - dockHint < 15000) return;
+  for (const b of boats) {
+    if (Math.abs(b.x - px) + Math.abs(b.y - py) === 1) {
+      dockHint = performance.now();
+      toast('A ferry landing \u2014 step on to sail across', 'boat');
+      return;
+    }
+  }
+}
+
+function onOthers(list) {
+  const keep = new Set();
+  for (const [id, x, y, nm] of list) {
+    keep.add(id);
+    const o = others.get(id);
+    if (!o) { others.set(id, { id, x, y, dx: x, dy: y, name: nm || '', face: 2 }); continue; }
+    // work out which way they are walking, so the sprite turns to match
+    if (x !== o.x || y !== o.y) o.face = x > o.x ? 1 : x < o.x ? 3 : y > o.y ? 2 : 0;
+    o.x = x; o.y = y; o.name = nm || '';
+    if (Math.abs(o.dx - x) + Math.abs(o.dy - y) > 4) { o.dx = x; o.dy = y; }   // teleported
+  }
+  for (const id of others.keys()) if (!keep.has(id)) others.delete(id);
+}
+
+/** A speech bubble carrying one emoji, rising and fading as it goes. */
+function drawEmote(x, y, idx, a, T) {
+  const r = Math.max(13, T * .40), rise = a * r * .9;
+  const cy = y - rise;
+  ctx.save();
+  ctx.globalAlpha = a > .75 ? (1 - a) * 4 : 1;
+  ctx.fillStyle = 'rgba(252,250,242,.94)';
+  ctx.strokeStyle = 'rgba(30,44,32,.5)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x, cy, r, 0, 6.283); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - r * .3, cy + r * .78); ctx.lineTo(x, cy + r * 1.3); ctx.lineTo(x + r * .1, cy + r * .82);
+  ctx.closePath(); ctx.fill();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(r * 1.2)}px system-ui, "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+  ctx.fillText(EMOJI[idx] || '?', x, cy + r * .06);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+function onChest(m) {
+  chests.delete(m.id);
+  gold = m.money; $('gold').textContent = gold;
+  pops.push({ text: '+' + m.v, t: performance.now(), good: true });
+  toast('+' + m.v + ' gold', 'good'); goldFlash = 1;
+  beep(880, 1320, .16, 'triangle', .05);
+}
+
+/** Shown once, the first time the purse rule actually happens to you. */
+function teach(key, title, body) {
+  try { if (localStorage.getItem('garden_t_' + key)) return; } catch (e) {}
+  try { localStorage.setItem('garden_t_' + key, '1'); } catch (e) {}
+  const el = $('teach');
+  el.innerHTML = '';
+  const h = document.createElement('b'); h.textContent = title;
+  const p = document.createElement('span'); p.textContent = body;
+  const x = document.createElement('button'); x.type = 'button'; x.textContent = 'Got it';
+  x.addEventListener('click', () => el.classList.remove('on'));
+  el.append(h, p, x);
+  el.classList.add('on');
+  setTimeout(() => el.classList.remove('on'), 9000);
+}
+
+function onLoot(m) {
+  gold = m.money; $('gold').textContent = gold;
+  const gained = m.d > 0;
+  pops.push({ text: (gained ? '+' : '') + m.d, t: performance.now(), good: gained });
+  if (gained) { toast('They carried more — you took ' + m.d + ' gold', 'good'); goldFlash = 1; beep(740, 990, .18, 'triangle', .05); }
+  else {
+    toast('You carried more \u2014 lost ' + (-m.d) + ' gold', 'bad'); badFlash = 1;
+    beep(330, 120, .3, 'sawtooth', .05);
+    teach('purse', 'The purse rule',
+      'Whoever carries less takes a cut from whoever carries more. Carrying a lot makes you a target \u2014 run it to the idol, where it is safe and counts double.');
+  }
+}
+
+/** The two states worth knowing without reading anything: safe, or disarmed. */
+function setSafety(m) {
+  const was = inSanct;
+  inSanct = !!m.safe;
+  if (inSanct && !was) toast('Sanctuary \u2014 nobody can rob you here', 'good');
+  disarmed = m.lurk ? 2 : m.lurkSoon ? 1 : 0;
+  const b = $('state');
+  if (inSanct) { b.textContent = 'SANCTUARY'; b.className = 'safe'; }
+  else if (disarmed === 2) { b.textContent = 'WAITED TOO LONG \u2014 you cannot take gold'; b.className = 'warn'; }
+  else if (disarmed === 1) { b.textContent = 'move on, or you will not be able to take gold'; b.className = 'soon'; }
+  else { b.textContent = ''; b.className = ''; }
+}
+
+function onMeta(m) {
+  $('timer').textContent = m.tl > 0 ? 'Time left ' + fmt(m.tl) : 'Level ending…';
+  $('rank').textContent = `#${m.rk} of ${m.n} \u00b7 ${m.sc} pts`;
+  // the two numbers that stay on screen on a phone
+  $('rankMini').textContent = `#${m.rk}/${m.n}`;
+  if (stageSecs > 0) dayT = Math.max(0, Math.min(1, 1 - m.tl / stageSecs));
+  setSafety(m);
+  const tm = $('timeMini');
+  tm.textContent = m.tl > 0 ? fmt(m.tl) : '0:00';
+  tm.classList.toggle('low', m.tl > 0 && m.tl <= 30);
+  const ol = $('lbl'); ol.textContent = '';
+  m.lb.forEach(([n, sc], i) => {
+    const li = document.createElement('li');
+    if (i + 1 === m.rk) li.className = 'me';
+    const pos = document.createElement('span'); pos.className = 'pos';
+    pos.textContent = i === 0 ? '\u2605' : (i + 1);
+    const pip = document.createElement('span'); pip.className = 'pip';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = n;
+    const s2 = document.createElement('span'); s2.className = 'sc'; s2.textContent = sc;
+    li.append(pos, pip, nm, s2); ol.appendChild(li);
+  });
+}
+
+
+// ================================================================ HUD
+// On a phone the stats collapse to rank and time left. Both panels
+// remember whether you left them open.
+const topEl = $('top'), topBar = $('topBar'), lbEl = $('lb'), lbBtn = $('lbBtn');
+topBar.addEventListener('click', () => {
+  const on = topEl.classList.toggle('open');
+  topBar.setAttribute('aria-expanded', on ? 'true' : 'false');
+  try { localStorage.setItem('garden_stats', on ? '1' : ''); } catch (e) {}
+});
+lbBtn.addEventListener('click', () => {
+  const on = lbEl.classList.toggle('on');
+  lbBtn.classList.toggle('on', on);
+  lbBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  try { localStorage.setItem('garden_lb', on ? '1' : ''); } catch (e) {}
+});
+try {
+  if (localStorage.getItem('garden_stats')) { topEl.classList.add('open'); topBar.setAttribute('aria-expanded', 'true'); }
+  if (localStorage.getItem('garden_lb')) { lbEl.classList.add('on'); lbBtn.classList.add('on'); }
+} catch (e) {}
+
+// ================================================================ talk
+// Three ways to speak, in rising order of how much they can go wrong:
+// emotes (anyone, always), the organiser's banner, and open chat, which
+// only unlocks in the final where everyone already has a name.
+const FEED_SHOW = 4;
+
+function esc(t) {
+  return String(t).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function pushFeed(text) {
+  feedLines.push({ text, t: performance.now() });
+  if (feedLines.length > FEED_SHOW) feedLines.shift();
+  renderFeed();
+}
+
+function renderFeed() {
+  const el = $('feed');
+  el.textContent = '';
+  for (const l of feedLines) {
+    const d = document.createElement('div');
+    d.textContent = l.text;
+    el.appendChild(d);
+  }
+}
+
+// lines age out on their own, so the ticker empties when the garden is quiet
+setInterval(() => {
+  const now = performance.now();
+  const before = feedLines.length;
+  feedLines = feedLines.filter(l => now - l.t < 9000);
+  if (feedLines.length !== before) renderFeed();
+}, 1500);
+
+function pushChat(who, text, ann) {
+  chatLines.push({ who, text, ann });
+  if (chatLines.length > 40) chatLines.shift();
+  const log = $('chatlog');
+  log.textContent = '';
+  for (const l of chatLines) {
+    const d = document.createElement('div');
+    if (l.ann) d.className = 'ann';
+    const b = document.createElement('b');
+    b.textContent = l.who + ': ';
+    d.append(b, document.createTextNode(l.text));
+    log.appendChild(d);
+  }
+  log.scrollTop = log.scrollHeight;
+  if (!$('talkpop').classList.contains('on')) {
+    $('talkbtn').classList.add('ping');
+    setTimeout(() => $('talkbtn').classList.remove('ping'), 2400);
+  }
+}
+
+function buildEmoteBar() {
+  const bar = $('emotebar');
+  bar.textContent = '';
+  EMOJI.forEach((ch, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = ch; b.title = 'Send ' + ch;
+    b.addEventListener('click', () => {
+      send({ t: 'em', e: i });
+      emotes.set(me.id, { e: i, t: performance.now() });   // show your own at once
+      beep(660, 880, .12, 'triangle', .04);
+    });
+    bar.appendChild(b);
+  });
+}
+
+$('talkbtn').addEventListener('click', () => {
+  const on = $('talkpop').classList.toggle('on');
+  $('talkbtn').classList.toggle('on', on);
+  $('talkbtn').classList.remove('ping');
+  if (on && !$('chatin').disabled) $('chatin').focus();
+});
+
+function sendChat() {
+  const v = $('chatin').value.trim();
+  if (!v) return;
+  send({ t: 'say', x: v });
+  $('chatin').value = '';
+}
+$('chatsend').addEventListener('click', sendChat);
+$('chatin').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendChat(); } });
+
+/** Open talk unlocks for the final; before that the box explains itself. */
+function setChatEnabled(on) {
+  $('chatin').disabled = !on;
+  $('chatsend').disabled = !on;
+  $('chatin').placeholder = on ? 'Say something to the other nine'
+                               : 'Open talk starts in the final';
+}
+
+// ================================================================ input
+const KEYS = { ArrowUp: 0, w: 0, W: 0, ArrowRight: 1, d: 1, D: 1, ArrowDown: 2, s: 2, S: 2, ArrowLeft: 3, a: 3, A: 3 };
+const press = d => { const i = held.indexOf(d); if (i >= 0) held.splice(i, 1); held.push(d); };
+const release = d => { const i = held.indexOf(d); if (i >= 0) held.splice(i, 1); };
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const d = KEYS[e.key];
+  if (d !== undefined) { e.preventDefault(); if (!e.repeat) press(d); }
+});
+addEventListener('keyup', e => { const d = KEYS[e.key]; if (d !== undefined) release(d); });
+addEventListener('blur', () => held.length = 0);
+document.querySelectorAll('#pad button').forEach(b => {
+  const d = +b.dataset.d;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); press(d); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => release(d)));
+});
+
+// drag to glance around (first person) / swipe to walk (top-down)
+let dragX = 0, dragY = 0, dragging = false, dragMoved = 0;
+cv.addEventListener('pointerdown', e => { dragX = e.clientX; dragY = e.clientY; dragging = true; dragMoved = 0; });
+cv.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - dragX, dy = e.clientY - dragY;
+  dragMoved += Math.abs(dx) + Math.abs(dy);
+  if (Math.abs(dx) > 22 || Math.abs(dy) > 22) {
+    const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+    held.length = 0; press(d); dragX = e.clientX; dragY = e.clientY;
+  }
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+  cv.addEventListener(ev, () => { dragging = false; held.length = 0; }));
+
+const VIEW_NAMES = ['Whole map', 'Garden view'];
+function paintLootBtn() {
+  const b = $('lootbtn');
+  b.classList.toggle('show', view === 0);        // it only means anything on the map
+  b.classList.toggle('on', showLoot);
+  b.setAttribute('aria-pressed', showLoot ? 'true' : 'false');
+  b.textContent = (showLoot ? '\u25CF' : '\u25CB') + ' Treasure';
+}
+$('viewbtn').addEventListener('click', () => {
+  view = view ? 0 : 1;
+  $('viewbtn').textContent = VIEW_NAMES[view];
+  paintLootBtn();
+});
+$('lootbtn').addEventListener('click', () => {
+  showLoot = !showLoot;
+  try { localStorage.setItem('garden_loot', showLoot ? '1' : ''); } catch (e) {}
+  paintLootBtn();
+  beep(showLoot ? 660 : 440, showLoot ? 880 : 330, .12, 'triangle', .04);
+});
+$('viewbtn').textContent = VIEW_NAMES[0];
+paintLootBtn();
+
+function tryMove(now) {
+  if (phase !== 'play' || !joined || !grid || now - lastMove < MI * 1.03) return;
+  for (let i = held.length - 1; i >= 0; i--) {
+    const d = held[i], nx = px + DX[d], ny = py + DY[d];
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    if (walkable(grid[ny * W + nx])) {
+      px = nx; py = ny; facing = d;
+      lastMove = now; send({ t: 'm', d, s: ++seq });
+      return;
+    }
+  }
+}
+
+// ================================================================ main loop
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  tryMove(now);
+
+  // Smooth the camera onto the tile you occupy, leaning a little the way
+  // you are heading so you can see what is coming rather than what you
+  // have already walked past.
+  const moving = held.length > 0;
+  const aimX = moving ? DX[facing] * LOOKAHEAD : 0;
+  const aimY = moving ? DY[facing] * LOOKAHEAD : 0;
+  leadX += (aimX - leadX) * Math.min(1, dt * 3.2);
+  leadY += (aimY - leadY) * Math.min(1, dt * 3.2);
+  // your figure slides between tiles rather than snapping, same as everyone else
+  if (Math.abs(selfX - px) + Math.abs(selfY - py) > 4) { selfX = px; selfY = py; }
+  selfX += (px - selfX) * Math.min(1, dt * 13);
+  selfY += (py - selfY) * Math.min(1, dt * 13);
+  const tx = px + .5 + leadX, ty = py + .5 + leadY;
+  camX += (tx - camX) * Math.min(1, dt * 11);
+  camY += (ty - camY) * Math.min(1, dt * 11);
+
+  for (const o of others.values()) {
+    o.dx += (o.x - o.dx) * Math.min(1, dt * 11);
+    o.dy += (o.y - o.dy) * Math.min(1, dt * 11);
+  }
+
+  if (grid) {
+    drawTopDown(now, view === 1);
+
+    // floating gold numbers, drawn over whichever view is up
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.textAlign = 'center';
+    ctx.font = `800 ${Math.max(16, Math.min(cw, ch) * .05)}px system-ui`;
+    for (let i = pops.length - 1; i >= 0; i--) {
+      const p = pops[i], a = (now - p.t) / 1200;
+      if (a >= 1) { pops.splice(i, 1); continue; }
+      ctx.globalAlpha = 1 - a;
+      ctx.fillStyle = p.good ? '#6ee07a' : '#ff8098';
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 4;
+      const ty2 = ch * .42 - a * ch * .1;
+      ctx.strokeText(p.text, cw / 2, ty2); ctx.fillText(p.text, cw / 2, ty2);
+      ctx.globalAlpha = 1;
+    }
+    if (goldFlash > 0) { ctx.fillStyle = `rgba(242,178,63,${goldFlash * .17})`; ctx.fillRect(0, 0, cw, ch); goldFlash = Math.max(0, goldFlash - dt * 2.4); }
+    if (badFlash > 0) { ctx.fillStyle = `rgba(209,66,90,${badFlash * .26})`; ctx.fillRect(0, 0, cw, ch); badFlash = Math.max(0, badFlash - dt * 2.2); }
+    if (boatFlash > 0) { ctx.fillStyle = `rgba(63,134,176,${boatFlash * .3})`; ctx.fillRect(0, 0, cw, ch); boatFlash = Math.max(0, boatFlash - dt * 1.6); }
+    drawMini(now / 1000);
+  } else {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#1d3a22'; ctx.fillRect(0, 0, cw, ch);
+  }
+  requestAnimationFrame(frame);
+}
+
+// ================================================================ lobby
+$('nm').value = localStorage.getItem('garden_name') || '';
+function setTab(m) {
+  mode = m;
+  $('tabCreate').classList.toggle('on', m === 'create');
+  $('tabJoin').classList.toggle('on', m === 'join');
+  $('paneCreate').classList.toggle('on', m === 'create');
+  $('paneJoin').classList.toggle('on', m === 'join');
+  $('err').style.display = 'none';
+}
+$('tabCreate').onclick = () => setTab('create');
+$('tabJoin').onclick = () => setTab('join');
+document.querySelectorAll('#delays button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#delays button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); delay = +b.dataset.s;
+  });
+});
+$('copy').addEventListener('click', () => {
+  if (navigator.clipboard) navigator.clipboard.writeText(roomCode)
+    .then(() => { $('copy').textContent = 'Copied'; setTimeout(() => $('copy').textContent = 'Copy', 1200); })
+    .catch(() => {});
+});
+function start() {
+  name = $('nm').value.trim(); localStorage.setItem('garden_name', name);
+  $('err').style.display = 'none';
+  if (mode === 'join') {
+    joinCode = $('code').value.trim().toUpperCase();
+    if (joinCode.length !== 6) { $('err').textContent = 'Enter the 6-character tournament code.'; $('err').style.display = 'block'; return; }
+  }
+  beep(330, 494, .2, 'triangle', .04);
+  connect();
+}
+$('go').onclick = start;
+$('practice').addEventListener('click', () => {
+  name = $('nm').value.trim() || 'You';
+  try { localStorage.setItem('garden_name', name); } catch (e) {}
+  mode = 'practice';
+  $('err').style.display = 'none';
+  beep(392, 587, .2, 'triangle', .04);
+  connect();
+});
+$('nm').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+if (/^[A-Z0-9]{6}$/.test(PRESET)) {
+  setTab('join');
+  $('code').value = PRESET;
+  $('joinHint') && ($('joinHint').textContent = 'Tournament ' + PRESET + ' \u2014 just add your name');
+}
+$('nm').focus();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

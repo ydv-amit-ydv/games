@@ -36,9 +36,27 @@ canvas { width: 76px; height: 76px; }
       <div class="tags"><span>1–8 players</span><span>phones &amp; laptops</span><span>2-minute rounds</span></div>
     </div>
   </a>
+  <a class="game" href="last-garden/">
+    <canvas id="maze" width="152" height="152" aria-hidden="true"></canvas>
+    <div>
+      <h2>The Last Garden</h2>
+      <p>A treasure race through a living hedge maze. Carry gold to the idol, and watch who you pass: the lighter purse robs the heavier.</p>
+      <div class="tags"><span>tournaments of 2–300</span><span>3 levels</span><span>organiser view + big screen</span></div>
+    </div>
+  </a>
 </main>
 <script src="bumblebloom/art.js"></script>
 <script>
+// a little hedge maze around a glowing idol
+(() => {
+  const c = document.getElementById("maze").getContext("2d"), n = 9, k = 152 / n;
+  c.fillStyle = "#e6d7ad"; c.fillRect(0, 0, 152, 152);
+  const wall = "111111111100010001101010101100000001111011011100000001101010101100010001111111111";
+  for (let i = 0; i < n * n; i++) if (wall[i] === "1") { c.fillStyle = (i * 7) % 3 ? "#3f9646" : "#2f7a3a"; c.beginPath(); c.roundRect((i % n) * k + 1, Math.floor(i / n) * k + 1, k - 2, k - 2, 5); c.fill(); }
+  const g = c.createRadialGradient(76, 76, 2, 76, 76, 30); g.addColorStop(0, "rgba(255,230,140,1)"); g.addColorStop(1, "rgba(255,230,140,0)");
+  c.fillStyle = g; c.beginPath(); c.arc(76, 76, 30, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#f2b23f"; c.beginPath(); c.arc(76, 76, 8, 0, Math.PI * 2); c.fill();
+})();
 (() => { const c = document.getElementById("logo").getContext("2d"); c.scale(2, 2); Art.lawn(c, 0, 0, 76, 76, false, 3); Art.flower(c, 36, 42, 18, "#e8629b", 0); Art.bee(c, 44, 24, -.5, "#f2b705", .3); })();
 </script>
 </body>
