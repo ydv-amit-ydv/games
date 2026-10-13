@@ -23,8 +23,11 @@ cloak coloured by what meeting them would do to your purse right now:
 | **blue**, deeper for a bigger gap | they carry more than you: you would take a cut of theirs |
 | **yellow** | nothing would change hands: equal purses, the sanctuary, a robbery just happened (3 s cooldown), or the poorer one is loitering at the idol |
 
-Only the colour level is sent, never anyone's actual gold. The whole-map view draws the same
-walkers (sized to stay readable) instead of dots and a pin.
+Only the colour level is sent, never anyone's actual gold.
+
+**The whole map** uses the garden's own pictures, kept small (about a corridor wide) so the
+hedges and turns stay readable: the same cloaked walkers, little chests of both kinds (bonus
+chests glow violet), and the golden temple idol at the heart.
 
 ## Two ways to run it
 
