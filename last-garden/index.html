@@ -74,6 +74,14 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
   background:linear-gradient(180deg,rgba(24,44,66,.92),rgba(10,20,32,.94));
   border:1px solid var(--goldDim);box-shadow:0 4px 14px rgba(0,0,0,.5)}
 #lootbtn.show{display:block}
+#purse{position:fixed;right:12px;bottom:calc(var(--padH) + 108px + var(--safe));z-index:3;padding:8px 11px;
+  font:600 11px/1.5 system-ui;color:#e8e4d4;border-radius:12px;pointer-events:none;
+  background:linear-gradient(180deg,rgba(24,44,66,.88),rgba(10,20,32,.92));
+  border:1px solid var(--goldDim);box-shadow:0 4px 14px rgba(0,0,0,.45);display:none}
+#purse.show{display:block}
+#purse b{color:var(--gold2);font-weight:700;letter-spacing:.4px;font-size:10.5px}
+#purse span{display:flex;align-items:center;gap:7px}
+#purse i{width:22px;height:9px;border-radius:5px;display:inline-block}
 #lootbtn.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1204;
   border-color:#8a7038}
 #viewbtn{position:fixed;right:12px;bottom:calc(var(--padH) + 24px + var(--safe));z-index:3;padding:11px 16px;
@@ -282,6 +290,12 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="banner"></div>
 <button id="viewbtn" type="button">Map view</button>
 <button id="lootbtn" type="button" aria-pressed="false">○ Treasure</button>
+<!-- what each cloak colour means: whether meeting that figure costs or pays -->
+<div id="purse" aria-hidden="true"><b>WHO TO MEET</b>
+  <span><i style="background:linear-gradient(90deg,#f2a33a,#d8571c)"></i>poorer: they take your gold</span>
+  <span><i style="background:linear-gradient(90deg,#7fb2d8,#2f6fd0)"></i>richer: you take theirs</span>
+  <span><i style="background:#e6c24a"></i>nothing changes hands now</span>
+  <span><i style="background:#b8452e"></i>you</span></div>
 <!-- the match ticker: what is happening elsewhere in the garden -->
 <div id="feed" aria-live="polite"></div>
 
@@ -701,7 +715,7 @@ function drawTopDown(now, whole) {
   const figures = [];
   for (const o of others.values()) {
     figures.push({ x: o.dx, y: o.dy, me: false, id: o.id,
-                   name: o.name, face: o.face,
+                   name: o.name, face: o.face, cue: o.cue || 0,
                    moving: Math.abs(o.x - o.dx) + Math.abs(o.y - o.dy) > .015 });
   }
   figures.push({ x: selfX, y: selfY, me: true, id: me.id,
@@ -723,10 +737,8 @@ function drawTopDown(now, whole) {
     // settles on the standing frame the moment it stops
     const fr = f.moving ? ((t * 7 + f.x + f.y) | 0) % ATLAS.WALK_FRAMES : 0;
     if (f.me) ATLAS.blit(ctx, ATLAS.marker(T), sx, sy + T * .1);
-    ATLAS.blit(ctx, ATLAS.person(FT, f.face || 0, fr,
-                                 f.me ? '#b8452e' : '#3f4f78',
-                                 f.me ? '#ffd45e' : '#8fa4d6', 0),
-               sx, sy);
+    const [body, trim] = cloak(f);
+    ATLAS.blit(ctx, ATLAS.person(FT, f.face || 0, fr, body, trim, 0), sx, sy);
     const top = sy - FT * 1.62;
     if (f.me) PAINT.paintPlate(ctx, sx, top, banked ? 'You ✓ ' + bankAmt : 'You', '#ffd45e', T);
     else if (f.name) PAINT.paintPlate(ctx, sx, top, f.name, '#cfe0ff', T);
@@ -797,15 +809,10 @@ function drawMapMarkers(figures, ox, oy, T, t) {
     ctx.lineTo(x, y + S * .24); ctx.closePath(); ctx.fill();
   }
 
-  // ---- other runners: small, so they never compete with you
-  for (const f of figures) {
-    if (f.me) continue;
-    const x = px2(f.x), y = py2(f.y);
-    ctx.fillStyle = 'rgba(10,18,28,.55)';
-    ctx.beginPath(); ctx.arc(x, y, S * .34, 0, 6.283); ctx.fill();
-    ctx.fillStyle = '#8fa4d6';
-    ctx.beginPath(); ctx.arc(x, y, S * .25, 0, 6.283); ctx.fill();
-  }
+  // ---- everyone else: the same cloaked walkers as the garden view, kept big
+  // enough to read on the map, coloured by what meeting them would do
+  const MF = S * 1.15;                                 // figure size on the map
+  for (const f of figures) if (!f.me) mapFigure(f, px2(f.x), py2(f.y) + MF * .45, MF, t);
 
   // ---- the picked chests, large, labelled, and pulsing gently
   for (const o of shown) {
@@ -867,39 +874,36 @@ function drawMapMarkers(figures, ox, oy, T, t) {
   ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  // ---- you: a pin whose point sits on your exact tile
+  // ---- you: your own red-cloaked walker, with a soft ring on the ground
+  // so the eye finds it on a busy map, and your name plate above
   ctx.save();
-  // a pulse going out, so the eye finds it even on a busy map
-  ctx.strokeStyle = `rgba(255,120,90,${.5 - pul * .38})`;
-  ctx.lineWidth = Math.max(2, S * .14);
-  ctx.beginPath(); ctx.arc(mx, my, S * (.9 + pul * .85), 0, 6.283); ctx.stroke();
-
-  ctx.fillStyle = 'rgba(0,0,0,.4)';
-  ctx.beginPath(); ctx.ellipse(mx, my + S * .1, S * .42, S * .16, 0, 0, 6.283); ctx.fill();
-
-  const top = my - S * 1.5;
-  const g = ctx.createLinearGradient(mx, top - S * .6, mx, top + S * .6);
-  g.addColorStop(0, '#ff9b72'); g.addColorStop(1, '#c4402a');
-  ctx.fillStyle = g;
-  ctx.strokeStyle = '#fff3d8';
-  ctx.lineWidth = Math.max(1.6, S * .11);
-  ctx.beginPath();                                  // teardrop, point downward
-  ctx.arc(mx, top, S * .62, Math.PI * .86, Math.PI * .14);
-  ctx.lineTo(mx, my);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#fff3d8';
-  ctx.beginPath(); ctx.arc(mx, top, S * .25, 0, 6.283); ctx.fill();
-
-  // which way you are facing, as a small tick off the pin
-  const fa = [-Math.PI / 2, 0, Math.PI / 2, Math.PI][facing] || 0;
-  ctx.translate(mx, top); ctx.rotate(fa);
-  ctx.fillStyle = '#fff3d8';
-  ctx.beginPath();
-  ctx.moveTo(S * .92, 0); ctx.lineTo(S * .52, -S * .26); ctx.lineTo(S * .52, S * .26);
-  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = `rgba(255,214,120,${.55 - pul * .35})`;
+  ctx.lineWidth = Math.max(2, S * .12);
+  ctx.beginPath(); ctx.ellipse(mx, my + MF * .42, MF * (.55 + pul * .35), MF * (.22 + pul * .14), 0, 0, 6.283); ctx.stroke();
   ctx.restore();
+  mapFigure({ me: true, face: facing, moving: held.length > 0, x: selfX, y: selfY }, mx, my + MF * .45, MF * 1.12, t);
+  PAINT.paintPlate(ctx, mx, my + MF * .45 - MF * 1.12 * 1.62, banked ? 'You ✓ ' + bankAmt : 'You', '#ffd45e', Math.max(T, S * .9));
+}
 
+/**
+ * Cloak colours. You are always red. Everyone else, runner or passerby, is
+ * tinted by what meeting them would do to your purse (purse_cue on the
+ * server): orange when they carry less than you and would take a cut,
+ * blue when they carry more and you would take one, yellow when nothing
+ * would change hands right now. Deeper means a bigger gap.
+ */
+const CLOAKS = {
+  '-3': ['#cf4f17', '#ffb07a'], '-2': ['#e2731f', '#ffc48a'], '-1': ['#eb9a34', '#ffd79a'],
+  '0': ['#c9a42f', '#f6e08c'],
+  '1': ['#6f9fc4', '#cfe3f2'], '2': ['#3f7cc4', '#a9cdf0'], '3': ['#2556b8', '#8fb6f2'],
+};
+function cloak(f) { return f.me ? ['#b8452e', '#ffd45e'] : CLOAKS[String(Math.max(-3, Math.min(3, f.cue | 0)))]; }
+
+/** One walker on the whole map, sized in screen pixels like the other map markers. */
+function mapFigure(f, sx, sy, size, t) {
+  const fr = f.moving ? ((t * 7 + f.x + f.y) | 0) % ATLAS.WALK_FRAMES : 0;
+  const [body, trim] = cloak(f);
+  ATLAS.blit(ctx, ATLAS.person(Math.round(size), f.face || 0, fr, body, trim, 0), sx, sy);
 }
 
 function roundRectPath(c, x, y, w, h, r) {
@@ -1131,7 +1135,7 @@ function handle(m) {
       if (ws) { ws.onclose = null; ws.close(); }
       joined = false; $('wait').style.display = 'none'; $('login').style.display = 'flex';
       break;
-    case 'n': onLevelStart(m); break;
+    case 'n': onLevelStart(m); $('purse').classList.add('show'); break;
     case 'p': onPos(m); break;
     case 'o': onOthers(m.l); break;
     case 'chest': onChest(m); break;
@@ -1183,12 +1187,14 @@ function handle(m) {
       $('wait').style.display = 'flex'; beep(523, 1046, .35, 'triangle', .07);
       break;
     case 'eliminated':
+      $('purse').classList.remove('show');
       $('elimMsg').textContent = `You finished #${m.rank} in ${m.stage} with ${m.money} gold`
         + (m.bank ? ` (${m.bank} of it banked)` : '')
         + `, ${m.prog}% of the way to the idol — ${m.score} points.`;
       $('elim').style.display = 'flex'; beep(420, 160, .45, 'triangle', .05);
       break;
     case 'tourEnd':
+      $('purse').classList.remove('show');
       if (m.practice) {
         $('champTitle').textContent = 'Practice over';
         $('champMsg').textContent =
@@ -1295,10 +1301,11 @@ function checkNearDock() {
 
 function onOthers(list) {
   const keep = new Set();
-  for (const [id, x, y, nm] of list) {
+  for (const [id, x, y, nm, cue] of list) {
     keep.add(id);
     const o = others.get(id);
-    if (!o) { others.set(id, { id, x, y, dx: x, dy: y, name: nm || '', face: 2 }); continue; }
+    if (!o) { others.set(id, { id, x, y, dx: x, dy: y, name: nm || '', face: 2, cue: cue | 0 }); continue; }
+    o.cue = cue | 0;
     // work out which way they are walking, so the sprite turns to match
     if (x !== o.x || y !== o.y) o.face = x > o.x ? 1 : x < o.x ? 3 : y > o.y ? 2 : 0;
     o.x = x; o.y = y; o.name = nm || '';

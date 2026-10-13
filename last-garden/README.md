@@ -14,6 +14,18 @@ whoever carries **more**. Passersby play by the same rule.
 Gold left at the idol is safe and counts in full; gold still in your hands counts half.
 Nobody can be robbed on the idol's doorstep, and loitering by the idol stops you robbing others.
 
+**Who to meet.** You are the red-cloaked walker. Everyone else, runner or passerby, wears a
+cloak coloured by what meeting them would do to your purse right now:
+
+| Cloak | Means |
+|---|---|
+| **orange**, deeper for a bigger gap | they carry less than you: they would take a cut of your gold |
+| **blue**, deeper for a bigger gap | they carry more than you: you would take a cut of theirs |
+| **yellow** | nothing would change hands: equal purses, the sanctuary, a robbery just happened (3 s cooldown), or the poorer one is loitering at the idol |
+
+Only the colour level is sent, never anyone's actual gold. The whole-map view draws the same
+walkers (sized to stay readable) instead of dots and a pin.
+
 ## Two ways to run it
 
 The same pages work both ways. When they load they check whether a Last Garden server is

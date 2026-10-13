@@ -306,12 +306,22 @@ const GardenSim = (() => {
         else if (p.lurk > 0) p.lurk = Math.max(0, p.lurk - dt * LURK_DECAY);
       });
     }
+    // what meeting this figure would do to your purse: -3..-1 costs you (orange), 1..3 pays (blue), 0 nothing (see server.py purse_cue)
+    purseCue(wd, me, e, t) {
+      if (me.money === e.money || this.inSanctuary(wd, me) || this.inSanctuary(wd, e)) return 0;
+      if (t < me.lootCd || t < e.lootCd) return 0;
+      const poor = e.money < me.money ? e : me;
+      if ((poor.lurk || 0) >= LURK_SECONDS) return 0;
+      const r = Math.abs(me.money - e.money) / Math.max(me.money, e.money), lvl = r < .34 ? 1 : r < .67 ? 2 : 3;
+      return e.money < me.money ? -lvl : lvl;
+    }
     broadcastNear(room) {
       const wd = room.world, ps = [...room.players.values()].filter(q => q.gone == null), reveal = room.stage >= REVEAL_FROM_STAGE;
-      const ents = ps.map(e => [e.id, e.x, e.y, reveal ? e.name : ""]).concat(room.passersby.map(n => [n.id, n.t % wd.w, Math.floor(n.t / wd.w), ""]));
+      const ents = ps.map(e => [e.id, e.x, e.y, reveal ? e.name : "", e]).concat(room.passersby.map(n => [n.id, n.t % wd.w, Math.floor(n.t / wd.w), "", n]));
+      const t = now();
       for (const p of ps) {
         const near = [];
-        for (const e of ents) { if (e[0] !== p.id && Math.abs(e[1] - p.x) <= VIEW_RADIUS && Math.abs(e[2] - p.y) <= VIEW_RADIUS) { near.push(e); if (near.length >= VIEW_MAX) break; } }
+        for (const e of ents) { if (e[0] !== p.id && Math.abs(e[1] - p.x) <= VIEW_RADIUS && Math.abs(e[2] - p.y) <= VIEW_RADIUS) { near.push([e[0], e[1], e[2], e[3], this.purseCue(wd, p, e[4], t)]); if (near.length >= VIEW_MAX) break; } }
         const key = JSON.stringify(near);
         if (key !== p.lastO) { p.lastO = key; this.send(p, { t: "o", l: near }); }
       }

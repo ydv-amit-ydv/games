@@ -668,8 +668,30 @@ def tick_lurk(room, dt):
             p.lurk = max(0.0, p.lurk - dt * LURK_DECAY)
 
 
+def purse_cue(wd, me, e, now):
+    """What meeting this figure would do to your purse, as a colour level.
+
+    Negative: they carry less than you, so meeting costs you gold (orange,
+    deeper the bigger the gap). Positive: they carry more, so meeting pays
+    (blue). Zero: nothing would change hands right now - equal purses, the
+    sanctuary, a fresh loot cooldown, or the poorer one loitering at the idol.
+    Only the level travels, never the amount.
+    """
+    if me.money == e.money or in_sanctuary(wd, me) or in_sanctuary(wd, e):
+        return 0
+    if now < me.loot_cd or now < e.loot_cd:
+        return 0
+    poor = e if e.money < me.money else me
+    if getattr(poor, "lurk", 0) >= LURK_SECONDS:
+        return 0
+    r = abs(me.money - e.money) / max(me.money, e.money)
+    lvl = 1 if r < 0.34 else 2 if r < 0.67 else 3
+    return -lvl if e.money < me.money else lvl
+
+
 def broadcast_near(room):
-    """Runners see only figures close by, and cannot tell who is who."""
+    """Runners see only figures close by, and cannot tell who is who -
+    only whether meeting them would cost or pay (purse_cue)."""
     wd = room.world
     ps = [q for q in room.players.values() if q.gone is None]   # away phones are not drawn
     # from the semi-final on, a rival close enough to see is close enough to name
@@ -677,20 +699,21 @@ def broadcast_near(room):
     buckets = {}
     for e in ps:
         buckets.setdefault((e.x >> 3, e.y >> 3), []).append(
-            (e.id, e.x, e.y, e.name if reveal else ""))
+            (e.id, e.x, e.y, e.name if reveal else "", e))
     for npc in room.passersby:
         x, y = npc.t % wd.w, npc.t // wd.w
-        buckets.setdefault((x >> 3, y >> 3), []).append((npc.id, x, y, ""))
+        buckets.setdefault((x >> 3, y >> 3), []).append((npc.id, x, y, "", npc))
 
     span = (VIEW_RADIUS >> 3) + 1
+    mono = time.monotonic()
     for p in ps:
         bx, by = p.x >> 3, p.y >> 3
         near = []
         for i in range(bx - span, bx + span + 1):
             for j in range(by - span, by + span + 1):
-                for (eid, ex, ey, enm) in buckets.get((i, j), ()):
+                for (eid, ex, ey, enm, ent) in buckets.get((i, j), ()):
                     if eid != p.id and abs(ex - p.x) <= VIEW_RADIUS and abs(ey - p.y) <= VIEW_RADIUS:
-                        near.append([eid, ex, ey, enm])
+                        near.append([eid, ex, ey, enm, purse_cue(wd, p, ent, mono)])
                         if len(near) >= VIEW_MAX:
                             break
         if near != p.last_o:
