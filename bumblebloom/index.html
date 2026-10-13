@@ -74,6 +74,7 @@ input:focus { outline: none; border-color: #5fbb56; }
 
 /* ---------- game ---------- */
 #game { flex-direction: column; background: #6fae5e; }
+#bgcv { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .hud { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0; pointer-events: none; }
 .card { background: var(--card); border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.16); padding: 8px 12px; }
@@ -215,6 +216,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
 </section>
 
 <section class="screen" id="game">
+  <canvas id="bgcv" aria-hidden="true"></canvas>
   <canvas id="cv"></canvas>
   <div class="hud">
     <div class="card" id="me"><div class="top"><i id="mydot"></i><span id="myname">You</span></div><div class="hps" id="hps" aria-label="Health"></div><div id="free"></div><span id="honey">0 honey</span><div id="mystats"></div></div>
@@ -600,7 +602,7 @@ function frame(now) {
     const free = lvl.workers > 1 ? new Set(mine.filter(b => isFree(S, b, webs)).map(b => b.id)) : null;
     const ready = new Set(S.b.filter(b => isFree(S, b, webs) && !(b.stingCd > 0)).map(b => b.id));   // bees that could take a sting
     lastS = S;
-    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims(), free, ready, reachSlots: seats.map(s => s.slot) });
+    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims(), free, backdrop: $("bgcv"), dpr: DPR, ready, reachSlots: seats.map(s => s.slot) });
     hud(S);
   }
   requestAnimationFrame(frame);

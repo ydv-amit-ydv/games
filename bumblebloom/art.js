@@ -287,6 +287,7 @@ const Art = (() => {
 
 const Garden = (() => {
   const M = 120;               // meadow margin around the hedge, for trees and beds
+  let bgId = 0;                    // which background the backdrop layer currently shows
   let world = null, bg = null, parts = [], flies = [], flash = [], floats = [], honeyClock = 0;
   const BGS = 1.25;
 
@@ -295,7 +296,7 @@ const Garden = (() => {
     world.fl = w.flowers.map(([x, y, r]) => ({ x, y, r, R: r + 26 }));
     flash = world.fl.map(() => 0);
     parts = [];
-    bg = paintBackground();
+    bg = paintBackground(); bgId++;
     const R = Art.rng(w.seed + 99);
     flies = Array.from({ length: 5 }, (_, i) => ({ x: R() * w.W, y: R() * w.H, a: R() * TAU, s: 30 + R() * 30, col: ["#f0812a", "#8e63d8", "#18a9b8", "#e8629b", "#f2b705"][i] }));
   }
@@ -421,7 +422,18 @@ const Garden = (() => {
     if (rot) { ctx.translate(vw, 0); ctx.rotate(Math.PI / 2); }
     ctx.translate(ox, oy); ctx.scale(s, s);
     view = { s, ox, oy, rot, vw };
-    ctx.drawImage(bg, -M, -M, world.W + 2 * M, world.H + 2 * M);
+    if (o.backdrop) {
+      // the still background (lawn, hedges, trees) lives on its own canvas behind this one and is
+      // painted only when the screen or the garden changes, not every frame: on phones that
+      // scaled (and turned) picture was most of the cost of a frame
+      const bc = o.backdrop, d = o.dpr || 1, key = [bgId, vw, vh, d, rot, s.toFixed(4), ox | 0, oy | 0].join();
+      if (bc.dataset.key !== key) {
+        bc.dataset.key = key; bc.width = Math.round(vw * d); bc.height = Math.round(vh * d);
+        const b = bc.getContext("2d"); b.setTransform(d, 0, 0, d, 0, 0);
+        if (rot) { b.translate(vw, 0); b.rotate(Math.PI / 2); }
+        b.translate(ox, oy); b.scale(s, s); b.drawImage(bg, -M, -M, world.W + 2 * M, world.H + 2 * M);
+      }
+    } else ctx.drawImage(bg, -M, -M, world.W + 2 * M, world.H + 2 * M);
     const owners = S.o || [];
     const slots = [...new Set(owners.filter(v => v != null))];
     slots.forEach(sl => patches(owners, sl).forEach(p => { for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) if (Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y) <= world.link) Art.vine(ctx, p[i], p[j], PC[sl], t); }));
