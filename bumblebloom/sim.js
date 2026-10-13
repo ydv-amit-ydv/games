@@ -18,6 +18,9 @@ const BloomSim = (() => {
   const OMEGA0 = 2.0, FLY_V = 320, ORBIT_GAP = 26, BEE_R = 9;
   const HP_MAX = 100, HEAL_PER_S = 7, FAINT_SECONDS = 3, FAINT_HONEY_LOSS = .15, SAFE_SECONDS = 1.5, DIZZY_SECONDS = 1.6;
   const BUMP_DMG = 10, TRAP_DMG = 35, DRAGON_DMG = 25, BIRD_DMG = 45, WEB_DPS = 18, TRAP_R = 24;
+  // sting dash and fortified patches (see server.py)
+  const STING_DMG = 35, STING_CD = 8, STING_SPEED = 1.45, STING_REACH = BEE_R * 2.6, STING_DIZZY = 1, BOUNTY_WINDOW = 4;
+  const FORTIFY_SIZE = 4, FORTIFY_LOOPS = 3;
   const PRED_FIRST = 12, PRED_GAP = [7, 13], DRAGON_SPEED = 380, BIRD_WARN = 1.8, BIRD_R = 75, WEB_SECONDS = 10;
   const SIZES = [[2, 1240, 780, 10], [4, 1440, 880, 14], [6, 1640, 980, 18], [8, 1840, 1080, 22]];
   const TAU = Math.PI * 2;
@@ -61,7 +64,7 @@ const BloomSim = (() => {
     constructor(code) {
       this.code = code; this.bees = new Map(); this.watchers = new Set(); this.host = null; this.phase = "lobby";
       this.world = null; this.preds = []; this.fxq = []; this.toast = null; this.tEnd = 0; this.tPhase = 0; this.nextPred = 0;
-      this.predId = 0; this.tickN = 0; this.solo = false; this.botsWanted = 0; this.lastRank = []; this.nextId = 1;
+      this.predId = 0; this.tickN = 0; this.fort = new Set(); this.solo = false; this.botsWanted = 0; this.lastRank = []; this.nextId = 1;
       let last = performance.now() / 1000, acc = 0;
       this.timer = setInterval(() => {
         const now = performance.now() / 1000; acc += Math.min(.25, now - last); last = now;
@@ -78,7 +81,8 @@ const BloomSim = (() => {
     }
     reset(b) {
       Object.assign(b, { state: "orbit", f: 0, ang: 0, rad: 40, dir: 1, v: OMEGA0, prog: 0, x: 0, y: 0, vx: 0, vy: 0,
-        timer: 0, hp: HP_MAX, safe: 0, score: 0, hitCd: 0, target: null, wait: 1, flyT: 0, faints: 0, blooms: 0 });
+        timer: 0, hp: HP_MAX, safe: 0, score: 0, hitCd: 0, target: null, wait: 1, flyT: 0, faints: 0, blooms: 0,
+        sting: false, stingArmed: false, stingCd: 0, lastHit: null, knocks: 0 });
     }
     freeSlot() { const used = new Set([...this.bees.values()].map(b => b.slot)); for (let i = 0; i < MAX_BEES; i++) if (!used.has(i)) return i; }
     label(b) { return b.name || NAMES[b.slot] + " bee"; }
@@ -94,12 +98,12 @@ const BloomSim = (() => {
       const wd = this.world;
       return { W: wd.W, H: wd.H, seed: wd.seed, link: wd.link, trap: wd.trap, flowers: wd.flowers.map(f => [f.x, f.y, f.r]),
         bees: this.sorted().map(b => ({ id: b.id, slot: b.slot, name: this.label(b), bot: b.bot })),
-        cfg: { hp: HP_MAX, secs: ROUND_SECONDS, flyV: FLY_V, trapR: TRAP_R + BEE_R } };
+        cfg: { hp: HP_MAX, secs: ROUND_SECONDS, flyV: FLY_V, trapR: TRAP_R + BEE_R, stingCd: STING_CD, fortSize: FORTIFY_SIZE, fortLoops: FORTIFY_LOOPS } };
     }
     stateMsg(now) {
       const st = { orbit: 0, fly: 1, dizzy: 2, faint: 3 };
       const msg = { t: "s", left: this.phase === "play" ? r1(Math.max(0, this.tEnd - now)) : ROUND_SECONDS, ph: this.phase,
-        b: [...this.bees.values()].map(b => [b.id, r1(b.x), r1(b.y), r3(b.ang), st[b.state], Math.round(b.hp), Math.floor(b.score), r2(b.prog), b.f, b.dir, r1(b.rad), r1(b.vx), r1(b.vy), b.safe > 0 ? 1 : 0, r2(b.v), b.target == null || b.state !== "fly" ? -1 : b.target]),
+        b: [...this.bees.values()].map(b => [b.id, r1(b.x), r1(b.y), r3(b.ang), st[b.state], Math.round(b.hp), Math.floor(b.score), r2(b.prog), b.f, b.dir, r1(b.rad), r1(b.vx), r1(b.vy), b.safe > 0 ? 1 : 0, r2(b.v), b.target == null || b.state !== "fly" ? -1 : b.target, b.sting ? 1 : 0, b.stingArmed ? 1 : 0, r1(b.stingCd)]),
         o: this.world.flowers.map(f => f.owner),
         p: this.preds.map(p => p.k === "dragon" ? ["d", Math.round(p.x), Math.round(p.y), r2(Math.atan2(p.vy, p.vx)), p.id]
           : p.k === "bird" ? ["b", Math.round(p.x), Math.round(p.y), r2(p.age / BIRD_WARN), p.id] : ["s", p.f, 0, r2(p.age), r2(p.life)]) };
@@ -132,7 +136,7 @@ const BloomSim = (() => {
       this.phase = "results"; this.tPhase = now + RESULTS_SECONDS;
       this.lastRank = [...this.bees.values()].sort((a, b) => b.score - a.score).map(b => {
         const ps = this.patches(b.slot);
-        return { slot: b.slot, name: this.label(b), honey: Math.floor(b.score), bot: b.bot, blooms: b.blooms, faints: b.faints,
+        return { slot: b.slot, name: this.label(b), honey: Math.floor(b.score), bot: b.bot, blooms: b.blooms, faints: b.faints, knocks: b.knocks,
           flowers: this.world.flowers.filter(f => f.owner === b.slot).length, patch: Math.max(0, ...ps.map(p => p.length)), rate: ps.reduce((a, p) => a + p.length ** 2, 0) };
       });
       this.broadcast({ t: "end", rank: this.lastRank });
@@ -146,23 +150,28 @@ const BloomSim = (() => {
 
     // ---- simulation
     place(b, f) { b.x = f.x + Math.cos(b.ang) * b.rad; b.y = f.y + Math.sin(b.ang) * b.rad; }
-    hurt(b, dmg, why) {
+    hurt(b, dmg, why, by = null) {
       if (b.safe > 0 || b.state === "faint") return;
+      if (by && by !== b) b.lastHit = [by, this.now()];
       b.hp -= dmg;
       if (b.hitCd <= 0) { b.hitCd = .35; this.fx("hit", b.x, b.y, b.slot); }
       if (b.hp <= 0) this.faint(b, why);
     }
     faint(b, why) {
-      b.state = "faint"; b.timer = FAINT_SECONDS; b.hp = 0;
+      b.state = "faint"; b.timer = FAINT_SECONDS; b.hp = 0; b.sting = b.stingArmed = false;
       const lost = Math.floor(b.score * FAINT_HONEY_LOSS); b.score -= lost; b.faints++;
       this.fx("faint", b.x, b.y, b.slot);
-      this.toast = `${this.label(b)} fainted (${why}) and dropped ${lost} honey`;
+      const [hitter, at] = b.lastHit || [null, 0]; b.lastHit = null;
+      if (hitter && this.bees.has(hitter.id) && this.now() - at <= BOUNTY_WINDOW) {
+        hitter.score += lost; hitter.knocks++;              // the bounty
+        this.toast = `${this.label(hitter)} knocked out ${this.label(b)} and took ${lost} honey!`;
+      } else this.toast = `${this.label(b)} fainted (${why}) and dropped ${lost} honey`;
     }
     respawn(b) {
       const fl = this.world.flowers, idx = (pred) => fl.map((f, i) => pred(f) ? i : -1).filter(i => i >= 0);
       const own = idx(f => f.owner === b.slot && f.web <= 0), pool = own.length ? own : idx(f => f.owner == null && f.web <= 0);
       const fi = choice(pool.length ? pool : fl.map((_, i) => i)), f = fl[fi];
-      Object.assign(b, { state: "orbit", f: fi, ang: uniform(0, TAU), rad: f.R, v: OMEGA0, prog: 0, hp: HP_MAX, safe: SAFE_SECONDS, target: null, wait: .6 });
+      Object.assign(b, { state: "orbit", f: fi, ang: uniform(0, TAU), rad: f.R, v: OMEGA0, prog: 0, hp: HP_MAX, safe: SAFE_SECONDS, target: null, wait: .6, sting: false });
       this.place(b, f);
     }
     patches(slot) {
@@ -177,6 +186,17 @@ const BloomSim = (() => {
     launch(b, fi) {
       if (!(b.state === "orbit" || b.state === "fly") || (b.state === "orbit" && fi === b.f)) return;
       b.state = "fly"; b.target = fi; b.prog = 0; b.flyT = 0;
+      if (b.stingArmed) this.startSting(b);
+    }
+    startSting(b) { b.sting = true; b.stingArmed = false; b.stingCd = STING_CD; }
+    armSting(b) {
+      if (b.stingCd > 0 || b.sting || !(b.state === "orbit" || b.state === "fly")) return;
+      if (b.state === "fly") this.startSting(b); else b.stingArmed = true;
+    }
+    fortified() {
+      const out = new Set(), fl = this.world.flowers;
+      new Set(fl.map(f => f.owner).filter(o => o != null)).forEach(sl => this.patches(sl).forEach(p => { if (p.length >= FORTIFY_SIZE) p.forEach(f => out.add(fl.indexOf(f))); }));
+      return out;
     }
     botThink(b, dt) {
       const wd = this.world, fl = wd.flowers;
@@ -193,17 +213,22 @@ const BloomSim = (() => {
         if (i === b.f || t.owner === b.slot || t.web > 0) return;
         if (segDist(b.x, b.y, t.x, t.y, cx, cy) < TRAP_R + BEE_R + 30) return;
         if (birds.some(p => hyp(t.x - p.x, t.y - p.y) < BIRD_R + 40)) return;
-        const sc = hyp(t.x - f.x, t.y - f.y) + (t.owner != null ? 120 : 0) + rand() * 90;
+        const sc = hyp(t.x - f.x, t.y - f.y) + (t.owner != null ? 120 : 0) + rand() * 90 + (this.fort.has(i) ? 220 : 0);
         if (sc < bs) { bs = sc; best = i; }
       });
-      if (best != null) this.launch(b, best); else b.wait = .5;
+      if (best != null) {
+        const t = fl[best];
+        if (b.stingCd <= 0 && [...this.bees.values()].some(o => o.slot !== b.slot && (o.state === "orbit" || o.state === "fly") && segDist(b.x, b.y, t.x, t.y, o.x, o.y) < 40)) b.stingArmed = true;
+        this.launch(b, best);
+      } else b.wait = .5;
     }
     step(dt, now) {
       const wd = this.world, fl = wd.flowers, [cx, cy] = wd.trap;
       fl.forEach(f => { f.flash = Math.max(0, f.flash - dt); f.web = Math.max(0, f.web - dt); });
+      this.fort = this.fortified();
       for (const b of this.bees.values()) {
         if (b.bot || b.gone != null) this.botThink(b, dt);
-        b.safe = Math.max(0, b.safe - dt); b.hitCd = Math.max(0, b.hitCd - dt);
+        b.safe = Math.max(0, b.safe - dt); b.hitCd = Math.max(0, b.hitCd - dt); b.stingCd = Math.max(0, b.stingCd - dt);
         if (b.state === "dizzy" || b.state === "faint") { b.timer -= dt; if (b.timer <= 0) this.respawn(b); continue; }
         if (b.state === "orbit") {
           const f = fl[b.f];
@@ -215,23 +240,39 @@ const BloomSim = (() => {
           else if (f.owner === b.slot) b.hp = Math.min(HP_MAX, b.hp + HEAL_PER_S * dt);
           else {
             b.prog += w * dt;
-            if (b.prog >= (f.owner == null ? TAU : 2 * TAU)) { f.owner = b.slot; f.flash = 1; b.prog = 0; b.blooms++; b.wait = .3 + rand() * .8; this.fx("bloom", f.x, f.y, b.slot); }
+            if (b.prog >= (f.owner == null ? 1 : this.fort.has(b.f) ? FORTIFY_LOOPS : 2) * TAU) { f.owner = b.slot; f.flash = 1; b.prog = 0; b.blooms++; b.wait = .3 + rand() * .8; this.fx("bloom", f.x, f.y, b.slot); }
           }
         } else if (b.state === "fly") {
           const t = fl[b.target], dx = t.x - b.x, dy = t.y - b.y, d = hyp(dx, dy) || 1;
-          b.vx = dx / d * FLY_V; b.vy = dy / d * FLY_V;
-          if (d - FLY_V * dt <= t.R) {
+          const spd = FLY_V * (b.sting ? STING_SPEED : 1);
+          b.vx = dx / d * spd; b.vy = dy / d * spd;
+          if (d - spd * dt <= t.R) {
             b.x = t.x - dx / d * t.R; b.y = t.y - dy / d * t.R;
             const rx = b.x - t.x, ry = b.y - t.y;
+            const dashing = b.sting;
             Object.assign(b, { state: "orbit", f: b.target, ang: (Math.atan2(ry, rx) + TAU) % TAU, rad: t.R, dir: rx * b.vy - ry * b.vx >= 0 ? 1 : -1, v: OMEGA0, prog: 0, target: null, wait: .4 + rand() * .6 });
+            if (dashing) {
+              // a dash at a flower strikes a rival circling it, wherever they are on the ring
+              const occ = [...this.bees.values()].filter(v => v !== b && v.slot !== b.slot && v.f === b.f && (v.state === "orbit" || v.state === "dizzy") && v.safe <= 0);
+              if (occ.length) this.stingHit(b, occ.reduce((m, v) => hyp(v.x - b.x, v.y - b.y) < hyp(m.x - b.x, m.y - b.y) ? v : m));
+            }
+            b.sting = false;
             this.fx("land", b.x, b.y, b.slot);
           } else { b.x += b.vx * dt; b.y += b.vy * dt; }
           if (hyp(b.x - cx, b.y - cy) < TRAP_R + BEE_R) {
             this.fx("snap", cx, cy, b.slot);
             b.x = cx - dx / d * (TRAP_R + BEE_R + 6); b.y = cy - dy / d * (TRAP_R + BEE_R + 6);
-            b.state = "dizzy"; b.timer = DIZZY_SECONDS; b.target = null;
+            b.state = "dizzy"; b.timer = DIZZY_SECONDS; b.target = null; b.sting = false;
             this.hurt(b, TRAP_DMG, "bitten by the flytrap");
           }
+        }
+      }
+      // stings: a dashing bee hits the first rival it reaches
+      for (const a of this.bees.values()) {
+        if (!(a.sting && a.state === "fly")) continue;
+        for (const v of this.bees.values()) {
+          if (v === a || v.slot === a.slot || !["orbit", "fly", "dizzy"].includes(v.state) || v.safe > 0) continue;
+          if (hyp(a.x - v.x, a.y - v.y) < STING_REACH) { this.stingHit(a, v); break; }
         }
       }
       const live = [...this.bees.values()].filter(b => b.state === "orbit" || b.state === "fly");
@@ -244,11 +285,17 @@ const BloomSim = (() => {
       this.stepPredators(dt, now);
       this.bees.forEach(b => { b.score += this.patches(b.slot).reduce((s, p) => s + p.length ** 2, 0) * dt; });
     }
+    stingHit(a, v) {
+      a.sting = false;
+      this.fx("sting", v.x, v.y, a.slot);
+      this.hurt(v, STING_DMG, `stung by ${this.label(a)}`, a);
+      if (v.state !== "faint") { v.state = "dizzy"; v.timer = STING_DIZZY; v.target = null; v.sting = false; }
+    }
     bump(flier, victim) {
       if (victim.safe > 0) return;
-      victim.state = "dizzy"; victim.timer = DIZZY_SECONDS;
+      victim.state = "dizzy"; victim.timer = DIZZY_SECONDS; victim.sting = false;
       this.fx("bump", victim.x, victim.y, victim.slot);
-      this.hurt(victim, BUMP_DMG, `bumped by ${this.label(flier)}`);
+      this.hurt(victim, BUMP_DMG, `bumped by ${this.label(flier)}`, flier);
     }
     stepPredators(dt, now) {
       const wd = this.world, fl = wd.flowers, W = wd.W, H = wd.H;
@@ -343,7 +390,8 @@ const BloomSim = (() => {
       } else b.gone = this.now();
     }
     control(b, m) {
-      if (m.t === "to") { const fi = m.f; if (this.phase === "play" && Number.isInteger(fi) && fi >= 0 && fi < this.world.flowers.length) this.launch(b, fi); }
+      if (m.t === "sting") { if (this.phase === "play") this.armSting(b); }
+      else if (m.t === "to") { const fi = m.f; if (this.phase === "play" && Number.isInteger(fi) && fi >= 0 && fi < this.world.flowers.length) this.launch(b, fi); }
       else if (m.t === "bots" && this.host === b.id && this.phase === "lobby" && Number.isInteger(m.v)) { this.botsWanted = Math.max(0, Math.min(MAX_BEES - 1, m.v)); this.broadcast(this.lobbyMsg()); }
       else if (m.t === "name" && this.phase === "lobby") { b.name = clean(m.v); this.broadcast(this.lobbyMsg()); }
       else if (m.t === "start" && this.host === b.id && this.phase === "lobby") this.startCountdown();

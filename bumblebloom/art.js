@@ -257,6 +257,18 @@ const Art = (() => {
     ctx.fillStyle = "#3a2a1a"; ctx.fillRect(-1, -7, 2, 14);
     ctx.restore();
   }
+  // the hedge a fortified flower grows: a ring of dark leaves, slower to break into
+  function hedgeRing(ctx, x, y, r, t) {
+    const n = Math.max(10, Math.round(r * .55));
+    ctx.save();
+    ctx.strokeStyle = "rgba(31,92,43,.55)"; ctx.lineWidth = 3; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+    for (let i = 0; i < n; i++) {
+      const a = i * TAU / n + Math.sin(t * .8 + i) * .02;
+      leaf(ctx, x + Math.cos(a) * r, y + Math.sin(a) * r, 9, a + (i % 2 ? 1.2 : -1.9), i % 3 ? "#2f7a3a" : "#3f9646");
+    }
+    ctx.restore();
+  }
   function ring(ctx, x, y, r, col, frac, w = 5) {
     ctx.save(); ctx.lineCap = "round"; ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = w + 3;
     ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * frac); ctx.stroke();
@@ -269,7 +281,7 @@ const Art = (() => {
     ctx.beginPath(); ctx.roundRect(x - w / 2, y - size * .9, w, size * 1.8, 8); ctx.fill();
     ctx.shadowColor = "transparent"; ctx.fillStyle = col; ctx.fillText(txt, x, y + 1); ctx.restore();
   }
-  return { mix, rng, lawn, daisy, hedge, leaf, tree, topiary, pond, bed, flower, vine, bee, star, flytrap, dragonfly, birdShadow, bird, spider, web, butterfly, ring, label };
+  return { mix, rng, lawn, daisy, hedge, leaf, tree, topiary, pond, bed, flower, vine, bee, star, flytrap, dragonfly, birdShadow, bird, spider, web, butterfly, ring, hedgeRing, label };
 })();
 
 
@@ -352,6 +364,7 @@ const Garden = (() => {
       const col = slot >= 0 ? PC[slot] : "#ffffff";
       if (k === "bloom") { const fi = world.fl.findIndex(f => Math.abs(f.x - x) < 2 && Math.abs(f.y - y) < 2); if (fi >= 0) flash[fi] = 1; burst(x, y, 18, () => ({ col, shape: "petal", v: 60 + Math.random() * 130 })); }
       else if (k === "hit") burst(x, y, 10, () => ({ col: "#e8504f", shape: "spark", v: 60 + Math.random() * 120 }));
+      else if (k === "sting") { burst(x, y, 16, () => ({ col: Math.random() < .5 ? "#ff5a2a" : "#ffb347", shape: "spark", v: 90 + Math.random() * 160 })); burst(x, y, 4, () => ({ col: "#f6c445", shape: "star", v: 40 + Math.random() * 60 })); }
       else if (k === "bump") burst(x, y, 6, () => ({ col: "#f6c445", shape: "star", v: 50 + Math.random() * 80 }));
       else if (k === "faint") burst(x, y, 14, () => ({ col: "rgba(255,255,255,.9)", shape: "puff", v: 30 + Math.random() * 60 }));
       else if (k === "snap") burst(x, y, 10, () => ({ col: "#4da54f", shape: "petal", v: 80 + Math.random() * 120 }));
@@ -405,6 +418,10 @@ const Garden = (() => {
     // bird shadows sit under everything that flies
     (S.p || []).filter(p => p[0] === "b").forEach(p => { if (p[3] < 1) Art.birdShadow(ctx, p[1], p[2], p[3], 75, t); });
     const webs = new Map(); (S.p || []).filter(p => p[0] === "s").forEach(p => webs.set(p[1], p));
+    // fortified patches: 4+ joined flowers grow a hedge and take 3 loops to steal
+    const fortSize = world.cfg.fortSize || 4, fortLoops = world.cfg.fortLoops || 3, fort = new Set();
+    slots.forEach(sl => patches(owners, sl).forEach(p => { if (p.length >= fortSize) p.forEach(f => fort.add(world.fl.indexOf(f))); }));
+    fort.forEach(i => { const f = world.fl[i]; Art.hedgeRing(ctx, f.x, f.y, f.r + 15, t); });
     world.fl.forEach((f, i) => {
       ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(f.x, f.y, f.R, 0, TAU); ctx.stroke(); ctx.restore();
       flash[i] = Math.max(0, flash[i] - dt * 1.5);
@@ -412,7 +429,7 @@ const Garden = (() => {
       const w = webs.get(i); if (w) Art.web(ctx, f.x, f.y, f.R - 2, Math.min(1, w[3] / .8) * Math.min(1, w[4] / 1.5));
     });
     // pollination progress
-    (S.b || []).forEach(b => { if (b.st === 0 && owners[b.f] !== b.slot && b.prog > 0) Art.ring(ctx, world.fl[b.f].x, world.fl[b.f].y, world.fl[b.f].r + 12, PC[b.slot], Math.min(1, b.prog / (owners[b.f] == null ? TAU : 2 * TAU)), 4); });
+    (S.b || []).forEach(b => { if (b.st === 0 && owners[b.f] !== b.slot && b.prog > 0) Art.ring(ctx, world.fl[b.f].x, world.fl[b.f].y, world.fl[b.f].r + 12, PC[b.slot], Math.min(1, b.prog / ((owners[b.f] == null ? 1 : fort.has(b.f) ? fortLoops : 2) * TAU)), 4); });
     // where my bees are going, and where a tap would send them
     const mineIds = new Set(o.mine || (o.me != null ? [o.me] : []));
     const solo = mineIds.size <= 1;
@@ -423,12 +440,14 @@ const Garden = (() => {
       ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x, f.y, f.R + 3, 0, TAU); ctx.stroke(); ctx.restore();
       if (txt) tag(ctx, f.x, f.y + f.R + 16, txt, warnCol || (solo ? "#1e4423" : col), 12);
     };
-    (S.b || []).forEach(b => { if (mineIds.has(b.id) && b.st === 1 && b.target >= 0) aimLine(b, world.fl[b.target], solo ? "rgba(255,255,255,.95)" : PC[b.slot], ""); });
+    (S.b || []).forEach(b => { if (mineIds.has(b.id) && b.st === 1 && b.target >= 0) aimLine(b, world.fl[b.target], b.sting ? "#d9411e" : solo ? "rgba(255,255,255,.95)" : PC[b.slot], ""); });
     (o.aims || []).forEach(a => {
       const b = beeById.get(a.id); if (!b || a.f < 0 || !(b.st === 0 || b.st === 1) || (b.st === 0 && a.f === b.f)) return;
       const f = world.fl[a.f], bad = hitsTrap(b, f), who = solo ? "" : (b.name || "") + ": ";
-      const col = bad ? "#e8504f" : solo ? "rgba(255,255,255,.95)" : PC[b.slot];
-      aimLine(b, f, col, bad ? who + "this way hits the flytrap!" : who + (a.mode === "pick" ? "flying here…" : solo ? "tap to fly here" : "let go to fly here"), bad ? "#c03a3a" : null);
+      const armed = b.armed || b.sting;
+      const col = bad ? "#e8504f" : armed ? "#d9411e" : solo ? "rgba(255,255,255,.95)" : PC[b.slot];
+      const what = a.mode === "pick" ? "flying here…" : armed ? "sting dash here" : solo ? "tap to fly here" : "let go to fly here";
+      aimLine(b, f, col, bad ? who + "this way hits the flytrap!" : who + what, bad ? "#c03a3a" : armed ? "#b8361a" : null);
     });
     // particles
     parts.forEach(p => {
@@ -449,7 +468,7 @@ const Garden = (() => {
       const n = p.length, cx = p.reduce((a, f) => a + f.x, 0) / n, cy = p.reduce((a, f) => a + f.y, 0) / n;
       const mine = mineSlots.has(sl);
       if (n === 1 && !mine && !o.allBadges) return;
-      const txt = n === 1 ? "+1/s" : `${n} flowers · ${n}×${n} = +${n * n}/s`;
+      const txt = n === 1 ? "+1/s" : `${n} flowers · ${n}×${n} = +${n * n}/s${n >= fortSize ? " · fortified" : ""}`;
       const by = n === 1 ? p[0].y + p[0].R + 14 : cy + (n === 2 ? 18 : 0);
       tag(ctx, cx, by, txt, PC[sl], n === 1 ? (o.allBadges ? 13 : 11) : mine || o.allBadges ? 15 : 12);
     }));
@@ -465,7 +484,23 @@ const Garden = (() => {
     // bees
     (S.b || []).forEach(b => {
       const ang = b.st === 0 ? b.ang + b.dir * Math.PI / 2 : b.st === 1 ? Math.atan2(b.vy, b.vx) : t * 3;
+      if (b.sting && b.st === 1) {
+        // a sting dash: a hot streak behind the bee
+        const sp = Math.hypot(b.vx, b.vy) || 1, ux = b.vx / sp, uy = b.vy / sp, L = 46 * zoom;
+        const g = ctx.createLinearGradient(b.x, b.y, b.x - ux * L, b.y - uy * L);
+        g.addColorStop(0, "rgba(255,120,60,.85)"); g.addColorStop(1, "rgba(255,190,90,0)");
+        ctx.save(); ctx.strokeStyle = g; ctx.lineCap = "round"; ctx.lineWidth = 9 * zoom;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L, b.y - uy * L); ctx.stroke(); ctx.restore();
+      }
       ctx.save(); ctx.translate(b.x, b.y); ctx.scale(zoom, zoom);
+      if ((b.armed || b.sting) && b.st < 2) {
+        // the stinger glows while a sting is ready to go
+        ctx.save(); ctx.rotate(ang);
+        const p = .6 + .4 * Math.sin(t * 12);
+        const g2 = ctx.createRadialGradient(-17, 0, 0, -17, 0, 9);
+        g2.addColorStop(0, `rgba(255,80,40,${.9 * p})`); g2.addColorStop(1, "rgba(255,80,40,0)");
+        ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(-17, 0, 9, 0, TAU); ctx.fill(); ctx.restore();
+      }
       Art.bee(ctx, 0, 0, ang, PC[b.slot], t + b.slot, { you: mineIds.has(b.id), dizzy: b.st === 2, faint: b.st === 3, safe: b.safe, hp: b.hp });
       ctx.restore();
       if (o.names && b.name) upright(ctx, b.x, b.y, () => { ctx.font = "800 12px Nunito, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.scale(zoom, zoom); ctx.strokeText(b.name, 0, -24); ctx.fillStyle = "#1e4423"; ctx.fillText(b.name, 0, -24); });
@@ -509,7 +544,7 @@ const Smooth = (() => {
   let buf = [];
   const DELAY = 110;
   function push(m, world) {
-    const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15] }));
+    const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18] }));
     buf.push({ at: performance.now(), m, bees });
     if (buf.length > 12) buf.shift();
   }

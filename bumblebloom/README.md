@@ -160,6 +160,23 @@ Every bee has **100 health** (the green bar under it).
 - **Circling your own flower heals** 7 health a second.
 - At **0 health your bee faints**: it drops 15% of its honey and comes back on one of its own flowers after 3 seconds, with a short shield (dashed white ring).
 
+### Sting dash
+Tap **Sting** (or press **E**; in two-on-one-screen mode, the Sting chip on your card).
+- Already flying? This flight becomes the dash. Circling? Your next flight does.
+- A dash flies 45% faster and hits the **first rival bee it touches**, flying or circling,
+  for **−35 health**, and leaves it dizzy (a dizzy bee is sent back to one of its own flowers).
+  A dash at a rival's flower strikes whoever is circling it.
+- **Bounty:** if a bee you stung or bumped faints within 4 seconds, the honey it drops
+  (15% of its honey) goes to you, and the toast says so.
+- Then an **8 second** cooldown. A dash that hits nobody ends when you land.
+- While armed, your stinger glows and the aim line turns red ("sting dash here").
+
+### Fortified patches
+A patch of **4 or more** joined flowers grows a hedge (a leafy ring around each flower,
+and "· fortified" on its label). Stealing one of its flowers takes **3 loops** instead of 2,
+so big patches are harder to break up, and a sting to clear the defender becomes the way in.
+Bots know this too: they sting rivals in their path and avoid fortified flowers.
+
 ### Round
 **2 minutes.** Most honey wins. A match is best of 3 rounds.
 

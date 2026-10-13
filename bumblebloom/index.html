@@ -112,7 +112,19 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
 .edge .act { font-weight: 800; font-size: 1.05rem; color: var(--c); filter: brightness(.8); }
 .edge .hp { height: 7px; }
 .edge .st { font-size: .78rem; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
-#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #hint { display: none; }
+#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #hint, #game.local #stingbtn { display: none; }
+#stingbtn { position: absolute; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); min-width: 118px; min-height: 52px; border: 0; border-radius: 999px;
+  font: 800 .95rem var(--f-body); color: #fff; background: linear-gradient(180deg, #ff7a45, #d9411e); box-shadow: 0 5px 0 #9c2a10, 0 8px 20px rgba(0,0,0,.25);
+  cursor: pointer; padding: 0 18px; touch-action: manipulation; }
+#stingbtn small { display: block; font-size: .68rem; font-weight: 700; opacity: .9; }
+#stingbtn.armed { background: linear-gradient(180deg, #ffd25c, #f08a24); color: #4a2a08; box-shadow: 0 5px 0 #b9642a, 0 0 22px rgba(255,120,40,.7); animation: stingPulse .6s ease-in-out infinite alternate; }
+#stingbtn.wait { background: linear-gradient(180deg, #c9b8ae, #9a8a80); box-shadow: 0 5px 0 #6d625b; }
+@keyframes stingPulse { to { transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { #stingbtn.armed { animation: none; } }
+@media (max-width: 640px) { #hint { left: 14px; transform: none; max-width: calc(100vw - 160px); white-space: normal; border-radius: 16px; } }
+.edge .stg { justify-self: start; border: 0; border-radius: 999px; padding: 6px 12px; min-height: 34px; font: 800 .8rem var(--f-body); color: #fff; background: linear-gradient(180deg, #ff7a45, #d9411e); cursor: pointer; }
+.edge .stg.armed { background: linear-gradient(180deg, #ffd25c, #f08a24); color: #4a2a08; }
+.edge .stg.wait { background: #b8aaa2; }
 #game.local .hud { justify-content: center; }
 #game.local.l2p .hud { top: 50%; transform: translateY(-50%); justify-content: flex-start; padding-top: 0; }
 #game.local.l2p #toast { top: 50%; transform: translate(-50%, -50%); }
@@ -175,11 +187,14 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <h3>How honey is counted</h3>
     <p>Every second, each <b>patch</b> of your flowers joined by vines gives <b>flowers × flowers</b> honey. Flowers close together grow vines between them.</p>
     <table><tr><td>1 flower on its own</td><td>+1 / s</td></tr><tr><td>2 joined flowers</td><td>2 × 2 = +4 / s</td></tr><tr><td>3 joined flowers</td><td>3 × 3 = +9 / s</td></tr><tr><td>4 joined flowers</td><td>4 × 4 = +16 / s</td></tr><tr><td>5 joined flowers</td><td>5 × 5 = +25 / s</td></tr></table>
+    <p><b>Fortified:</b> a patch of 4 or more grows a hedge, and its flowers take <b>3 loops</b> to steal instead of 2.</p>
+    <p><b>Sting dash</b> (button or <b>E</b>): your flight becomes a fast dash that hits the first rival it touches for 35 health. Knock them out within 4 s and their dropped honey is yours. 8 s cooldown.</p>
     <p>So one big patch beats many small ones. Steal the middle flower of a rival's patch to split it in two. The label on each patch shows what it earns.</p>
     <button id="helpclose" type="button">Got it</button>
   </div>
   <div id="toast"></div>
   <div id="hint">Tap a flower to fly there</div>
+  <button id="stingbtn" type="button" aria-label="Sting dash">STING<small>key E</small></button>
   <div id="edges"></div>
   <div id="count"><b id="countn">3</b></div>
   <div id="results"><div class="sign"><h2 id="rtitle">Round over</h2><div class="rank" id="rlist"></div><p class="small" id="rnext" style="text-align:center">Back to the lobby in a moment…</p></div></div>
@@ -325,7 +340,7 @@ function showResults(rank) {
   const here = new Set(seats.map(s => s.slot));
   const top = rank[0];
   $("rtitle").textContent = top && here.has(top.slot) && seats.length === 1 ? "Your hive wins!" : top ? `${top.name} wins!` : "Round over";
-  $("rlist").innerHTML = rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)}${here.has(r.slot) && seats.length === 1 ? " (you)" : ""}</span><b>${r.honey}</b><small>${r.flowers} flowers · biggest patch ${r.patch} (+${r.rate}/s at the end) · ${r.faints} faints</small></div>`).join("");
+  $("rlist").innerHTML = rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)}${here.has(r.slot) && seats.length === 1 ? " (you)" : ""}</span><b>${r.honey}</b><small>${r.flowers} flowers · biggest patch ${r.patch} (+${r.rate}/s at the end) · ${r.knocks || 0} knockouts · ${r.faints} faints</small></div>`).join("");
   $("results").style.display = "flex";
 }
 
@@ -368,7 +383,10 @@ function stepPick(seat) {
   clearTimeout(seat.pickT);
   seat.pickT = setTimeout(() => { fly(seat, seat.pick); seat.pick = null; seat.list = null; if (seat.el) seat.el.classList.remove("down"); }, 650);
 }
+function sting(seat) { if (seat) send(seat, { t: "sting" }); }
+$("stingbtn").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); sting(seats[0]); });
 window.addEventListener("keydown", e => {
+  if ($("game").classList.contains("on") && e.code === "KeyE" && !e.repeat && !shared()) { e.preventDefault(); sting(seats[0]); return; }
   if (!$("game").classList.contains("on") || e.code !== "Space" || shared()) return;
   e.preventDefault();
   if (!e.repeat) stepPick(seats[0]);
@@ -405,7 +423,9 @@ function buildEdges() {
     ["left", "right", "top", "bottom"].forEach(k => { if (sp[k]) b.style[k] = sp[k]; });
     b.style.transform = `${sp.tx || ""} ${sp.flip ? "rotate(180deg)" : ""}`.trim() || "none";
     b.setAttribute("aria-label", `${seat.name || "Player " + (i + 1)}: drag onto a flower`);
-    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">DRAG TO A FLOWER</span><div class="hp"><div></div></div><span class="st">0 honey</span>`;
+    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">DRAG TO A FLOWER</span><div class="hp"><div></div></div><span class="st">0 honey</span><button type="button" class="stg">STING</button>`;
+    const chip = b.querySelector(".stg");
+    chip.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); sting(seat); });
     dragFrom(b, seat);
     seat.el = b; host.appendChild(b);
   });
@@ -431,6 +451,19 @@ function frame(now) {
 requestAnimationFrame(frame);
 const hpColor = f => f > .5 ? "#4fae52" : f > .25 ? "#f0a824" : "#e8504f";
 const action = st => st === 0 ? "DRAG TO A FLOWER" : st === 1 ? "FLYING…" : st === 2 ? "DIZZY…" : "FAINTED…";
+// the sting button: ready, armed for the next flight, dashing now, or cooling down
+function paintSting(el, b, big) {
+  if (!el) return;
+  const state = b.sting && b.st === 1 ? "dash" : b.armed ? "armed" : b.stingCd > 0 ? "wait" : "ready";
+  const key = state + (state === "wait" ? Math.ceil(b.stingCd) : "");
+  if (el.dataset.s === key) return;
+  el.dataset.s = key;
+  el.classList.toggle("armed", state === "armed" || state === "dash");
+  el.classList.toggle("wait", state === "wait");
+  const main = state === "dash" ? "DASHING!" : state === "armed" ? "ARMED" : state === "wait" ? `STING ${Math.ceil(b.stingCd)}s` : "STING";
+  const sub = state === "armed" ? "tap a flower" : state === "dash" ? "hit a rival" : state === "wait" ? "recharging" : "key E";
+  el.innerHTML = big ? `${main}<small>${sub}</small>` : main;
+}
 function hud(S) {
   const stats = Garden.stats(S.o);
   const me = seats[0], mb = S.b.find(b => b.id === me.id);
@@ -441,6 +474,7 @@ function hud(S) {
     const st = stats.get(me.slot);
     const sum = st.patches.length ? st.patches.map(n => n > 1 ? `${n}×${n}` : "1").join(" + ") : "no flowers yet";
     $("mystats").innerHTML = `<b>${st.flowers}</b> flower${st.flowers === 1 ? "" : "s"} · biggest patch <b>${st.biggest}</b><br><span class="rate">+${st.rate} honey/s</span> = ${sum}`;
+    paintSting($("stingbtn"), mb, true);
     $("hint").textContent = mb.st === 2 ? "Dizzy… back in a moment" : mb.st === 3 ? "Fainted… back in a moment" : touchy() ? "Tap a flower to fly there" : "Click a flower to fly there (or tap Space to pick)";
   }
   if (shared()) seats.forEach(seat => {
@@ -448,6 +482,7 @@ function hud(S) {
     const f = Math.max(0, b.hp) / 100, st = stats.get(seat.slot) || { flowers: 0, rate: 0 };
     seat.el.querySelector(".act").textContent = seat.drag ? "NOW LET GO ON A FLOWER" : action(b.st);
     const bar = seat.el.querySelector(".hp div"); bar.style.width = (f * 100) + "%"; bar.style.background = hpColor(f);
+    paintSting(seat.el.querySelector(".stg"), b, false);
     seat.el.querySelector(".st").textContent = `${b.score} honey · ${st.flowers} flower${st.flowers === 1 ? "" : "s"} · +${st.rate}/s`;
   });
   const left = S.left ?? 0; $("clock").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");

@@ -23,6 +23,12 @@ The game
   plus the Venus flytrap in the middle, which bites any bee that flies into it.
   Circling one of your own flowers heals. At 0 health a bee faints, drops
   some honey and comes back on one of its flowers a few seconds later.
+
+  Sting dash: tap Sting and your flight becomes a fast dash; the first rival
+  it touches loses 35 health and goes dizzy. If that rival faints within a
+  few seconds, its dropped honey goes to you (the bounty). 8 s cooldown.
+  Fortified patches: a patch of 4+ joined flowers grows a hedge, and its
+  flowers take 3 loops to steal instead of 2.
 """
 import asyncio, base64, hashlib, json, math, os, random, socket, string, struct, time
 
@@ -61,6 +67,18 @@ TRAP_DMG = 35
 DRAGON_DMG = 25
 BIRD_DMG = 45
 WEB_DPS = 18
+
+# ---- sting dash: tap Sting, and your flight becomes a fast dash that hits the first rival it touches
+STING_DMG = 35
+STING_CD = 8.0                      # seconds between stings
+STING_SPEED = 1.45                  # a dash flies this much faster than a normal flight
+STING_REACH = BEE_R * 2.6           # a little more forgiving than a bump
+STING_DIZZY = 1.0
+BOUNTY_WINDOW = 4.0                 # faint this soon after a sting or bump and the honey goes to whoever hit you
+
+# ---- fortified patches: big patches grow a hedge, so their flowers are slower to steal
+FORTIFY_SIZE = 4                    # a patch of this many joined flowers is fortified
+FORTIFY_LOOPS = 3                   # loops a rival needs to take one of its flowers (normally 2)
 
 # ---- flytrap
 TRAP_R = 24.0
@@ -127,7 +145,8 @@ def seg_dist(ax, ay, bx, by, px, py):
 class Bee:
     __slots__ = ("id", "slot", "name", "w", "room", "key", "bot", "gone", "down",
                  "state", "f", "ang", "rad", "dir", "v", "prog", "x", "y", "vx", "vy",
-                 "timer", "hp", "safe", "score", "hit_cd", "target", "wait", "fly_t", "faints", "blooms")
+                 "timer", "hp", "safe", "score", "hit_cd", "target", "wait", "fly_t", "faints", "blooms",
+                 "sting", "sting_armed", "sting_cd", "last_hit", "knocks")
 
     def send(self, frame):
         if self.w is None:
@@ -169,6 +188,7 @@ class Room:
         self.solo = False
         self.bots_wanted = 0
         self.last_rank = []
+        self.fort = set()           # flowers in a fortified patch, worked out each tick
 
 
 ROOMS = {}
@@ -193,6 +213,7 @@ def reset_bee(b):
     b.x = b.y = b.vx = b.vy = 0.0
     b.timer, b.hp, b.safe, b.score, b.hit_cd = 0.0, HP_MAX, 0.0, 0.0, 0.0
     b.target, b.wait, b.fly_t, b.faints, b.blooms = None, 1.0, 0.0, 0, 0
+    b.sting, b.sting_armed, b.sting_cd, b.last_hit, b.knocks = False, False, 0.0, None, 0
 
 
 def free_slot(room):
@@ -249,7 +270,8 @@ def world_msg(room):
             "trap": wd["trap"], "flowers": [[f["x"], f["y"], f["r"]] for f in wd["flowers"]],
             "bees": [{"id": b.id, "slot": b.slot, "name": label(b), "bot": b.bot}
                      for b in sorted(room.bees.values(), key=lambda b: b.slot)],
-            "cfg": {"hp": HP_MAX, "secs": ROUND_SECONDS, "flyV": FLY_V, "trapR": TRAP_R + BEE_R}}
+            "cfg": {"hp": HP_MAX, "secs": ROUND_SECONDS, "flyV": FLY_V, "trapR": TRAP_R + BEE_R,
+                    "stingCd": STING_CD, "fortSize": FORTIFY_SIZE, "fortLoops": FORTIFY_LOOPS}}
 
 
 def state_msg(room, now):
@@ -259,7 +281,8 @@ def state_msg(room, now):
         st = {"orbit": 0, "fly": 1, "dizzy": 2, "faint": 3}[b.state]
         bees.append([b.id, round(b.x, 1), round(b.y, 1), round(b.ang, 3), st, round(b.hp),
                      int(b.score), round(b.prog, 2), b.f, b.dir, round(b.rad, 1),
-                     round(b.vx, 1), round(b.vy, 1), 1 if b.safe > 0 else 0, round(b.v, 2), -1 if b.target is None or b.state != "fly" else b.target])
+                     round(b.vx, 1), round(b.vy, 1), 1 if b.safe > 0 else 0, round(b.v, 2), -1 if b.target is None or b.state != "fly" else b.target,
+                     1 if b.sting else 0, 1 if b.sting_armed else 0, round(b.sting_cd, 1)])
     preds = []
     for p in room.preds:
         if p["k"] == "dragon":
@@ -326,7 +349,7 @@ def end_round(room, now):
     room.t_phase = now + RESULTS_SECONDS
     rank = sorted(room.bees.values(), key=lambda b: -b.score)
     room.last_rank = [{"slot": b.slot, "name": label(b), "honey": int(b.score), "bot": b.bot,
-                       "blooms": b.blooms, "faints": b.faints,
+                       "blooms": b.blooms, "faints": b.faints, "knocks": b.knocks,
                        "flowers": sum(1 for f in room.world["flowers"] if f["owner"] == b.slot),
                        "patch": max((len(p) for p in patches(room.world, b.slot)), default=0),
                        "rate": sum(len(p) ** 2 for p in patches(room.world, b.slot))}
@@ -351,9 +374,11 @@ def place_on_orbit(b, f):
     b.y = f["y"] + math.sin(b.ang) * b.rad
 
 
-def hurt(room, b, dmg, why):
+def hurt(room, b, dmg, why, by=None):
     if b.safe > 0 or b.state == "faint":
         return
+    if by is not None and by is not b:
+        b.last_hit = (by, time.time())      # for the bounty, if this ends in a faint
     b.hp -= dmg
     if b.hit_cd <= 0:               # a web hurts every tick; only show a hit now and then
         b.hit_cd = 0.35
@@ -363,12 +388,19 @@ def hurt(room, b, dmg, why):
 
 
 def faint(room, b, why):
-    b.state, b.timer, b.hp = "faint", FAINT_SECONDS, 0
+    b.state, b.timer, b.hp, b.sting, b.sting_armed = "faint", FAINT_SECONDS, 0, False, False
     lost = int(b.score * FAINT_HONEY_LOSS)
     b.score -= lost
     b.faints += 1
     fx(room, "faint", b.x, b.y, b.slot)
-    room.toast = "%s fainted (%s) and dropped %d honey" % (label(b), why, lost)
+    hitter, at = b.last_hit or (None, 0)
+    b.last_hit = None
+    if hitter is not None and hitter.room is room and time.time() - at <= BOUNTY_WINDOW:
+        hitter.score += lost                # the bounty: the honey goes to whoever knocked them out
+        hitter.knocks += 1
+        room.toast = "%s knocked out %s and took %d honey!" % (label(hitter), label(b), lost)
+    else:
+        room.toast = "%s fainted (%s) and dropped %d honey" % (label(b), why, lost)
 
 
 def respawn(room, b):
@@ -378,7 +410,7 @@ def respawn(room, b):
     fi = random.choice(pool)
     f = fl[fi]
     b.state, b.f, b.ang, b.rad, b.v, b.prog = "orbit", fi, random.uniform(0, math.tau), f["R"], OMEGA0, 0.0
-    b.hp, b.safe, b.target, b.wait = HP_MAX, SAFE_SECONDS, None, 0.6
+    b.hp, b.safe, b.target, b.wait, b.sting = HP_MAX, SAFE_SECONDS, None, 0.6, False
     place_on_orbit(b, f)
 
 
@@ -406,6 +438,34 @@ def launch(b, fi):
     if b.state not in ("orbit", "fly") or (b.state == "orbit" and fi == b.f):
         return
     b.state, b.target, b.prog, b.fly_t = "fly", fi, 0.0, 0.0
+    if b.sting_armed:
+        start_sting(b)
+
+
+def start_sting(b):
+    b.sting, b.sting_armed, b.sting_cd = True, False, STING_CD
+
+
+def arm_sting(b):
+    """Sting while flying and this flight becomes the dash; while circling, the next one does."""
+    if b.sting_cd > 0 or b.sting or b.state not in ("orbit", "fly"):
+        return
+    if b.state == "fly":
+        start_sting(b)
+    else:
+        b.sting_armed = True
+
+
+def fortified(wd):
+    """Indexes of flowers in a patch big enough to be fortified."""
+    out = set()
+    slots = {f["owner"] for f in wd["flowers"] if f["owner"] is not None}
+    index = {id(f): i for i, f in enumerate(wd["flowers"])}
+    for sl in slots:
+        for p in patches(wd, sl):
+            if len(p) >= FORTIFY_SIZE:
+                out.update(index[id(f)] for f in p)
+    return out
 
 
 def bot_think(room, b, dt):
@@ -425,6 +485,7 @@ def bot_think(room, b, dt):
         return
     birds = [p for p in room.preds if p["k"] == "bird"]
     cx, cy = wd["trap"]
+    fort = room.fort
     best, bs = None, 1e9
     for i, t in enumerate(fl):
         if i == b.f or t["owner"] == b.slot or t["web"] > 0:
@@ -434,9 +495,15 @@ def bot_think(room, b, dt):
         if any(math.hypot(t["x"] - p["x"], t["y"] - p["y"]) < BIRD_R + 40 for p in birds):
             continue
         sc = math.hypot(t["x"] - f["x"], t["y"] - f["y"]) + (120 if t["owner"] is not None else 0) + random.random() * 90
+        if i in fort:
+            sc += 220                           # a hedge makes it slow to take
         if sc < bs:
             bs, best = sc, i
     if best is not None:
+        t = fl[best]
+        if b.sting_cd <= 0 and any(o.slot != b.slot and o.state in ("orbit", "fly") and
+                                   seg_dist(b.x, b.y, t["x"], t["y"], o.x, o.y) < 40 for o in room.bees.values()):
+            b.sting_armed = True                # a rival sits on the way: make it a dash
         launch(b, best)
     else:
         b.wait = 0.5
@@ -450,12 +517,14 @@ def step(room, dt, now):
     for f in fl:
         f["flash"] = max(0.0, f["flash"] - dt)
         f["web"] = max(0.0, f["web"] - dt)
+    room.fort = fortified(wd)
 
     for b in room.bees.values():
         if b.bot or b.gone is not None:
             bot_think(room, b, dt)
         b.safe = max(0.0, b.safe - dt)
         b.hit_cd = max(0.0, b.hit_cd - dt)
+        b.sting_cd = max(0.0, b.sting_cd - dt)
         if b.state in ("dizzy", "faint"):
             b.timer -= dt
             if b.timer <= 0:
@@ -476,7 +545,8 @@ def step(room, dt, now):
                 b.hp = min(HP_MAX, b.hp + HEAL_PER_S * dt)
             else:
                 b.prog += w * dt
-                need = math.tau if f["owner"] is None else 2 * math.tau
+                loops = 1 if f["owner"] is None else FORTIFY_LOOPS if b.f in room.fort else 2
+                need = loops * math.tau
                 if b.prog >= need:
                     f["owner"], f["flash"], b.prog = b.slot, 1.0, 0.0
                     b.blooms += 1
@@ -486,8 +556,9 @@ def step(room, dt, now):
             t = fl[b.target]
             dx, dy = t["x"] - b.x, t["y"] - b.y
             d = math.hypot(dx, dy) or 1
-            b.vx, b.vy = dx / d * FLY_V, dy / d * FLY_V
-            step_len = FLY_V * dt
+            spd = FLY_V * (STING_SPEED if b.sting else 1.0)
+            b.vx, b.vy = dx / d * spd, dy / d * spd
+            step_len = spd * dt
             if d - step_len <= t["R"]:
                 # arrive on the flower's ring and start circling it
                 b.x, b.y = t["x"] - dx / d * t["R"], t["y"] - dy / d * t["R"]
@@ -497,6 +568,13 @@ def step(room, dt, now):
                 b.rad = t["R"]
                 b.dir = 1 if rx * b.vy - ry * b.vx >= 0 else -1
                 b.v, b.prog, b.target = OMEGA0, 0.0, None
+                if b.sting:
+                    # a dash at a flower strikes a rival circling it, wherever they are on the ring
+                    occ = [v for v in room.bees.values() if v is not b and v.slot != b.slot and v.f == b.f
+                           and v.state in ("orbit", "dizzy") and v.safe <= 0]
+                    if occ:
+                        sting_hit(room, b, min(occ, key=lambda v: math.hypot(v.x - b.x, v.y - b.y)))
+                b.sting = False                 # a dash that hit nobody ends when you land
                 b.wait = 0.4 + random.random() * 0.6
                 fx(room, "land", b.x, b.y, b.slot)
             else:
@@ -506,8 +584,19 @@ def step(room, dt, now):
                 # flew straight into the flytrap: bitten, dazed, sent home
                 fx(room, "snap", cx, cy, b.slot)
                 b.x, b.y = cx - dx / d * (TRAP_R + BEE_R + 6), cy - dy / d * (TRAP_R + BEE_R + 6)
-                b.state, b.timer, b.target = "dizzy", DIZZY_SECONDS, None
+                b.state, b.timer, b.target, b.sting = "dizzy", DIZZY_SECONDS, None, False
                 hurt(room, b, TRAP_DMG, "bitten by the flytrap")
+
+    # stings: a dashing bee hits the first rival it reaches, flying or circling
+    for a in room.bees.values():
+        if not (a.sting and a.state == "fly"):
+            continue
+        for v in room.bees.values():
+            if v is a or v.slot == a.slot or v.state not in ("orbit", "fly", "dizzy") or v.safe > 0:
+                continue
+            if math.hypot(a.x - v.x, a.y - v.y) < STING_REACH:
+                sting_hit(room, a, v)
+                break
 
     # bumping
     live = [b for b in room.bees.values() if b.state in ("orbit", "fly")]
@@ -527,12 +616,20 @@ def step(room, dt, now):
         b.score += sum(len(p) ** 2 for p in patches(wd, b.slot)) * dt
 
 
+def sting_hit(room, a, v):
+    a.sting = False
+    fx(room, "sting", v.x, v.y, a.slot)
+    hurt(room, v, STING_DMG, "stung by %s" % label(a), by=a)
+    if v.state != "faint":
+        v.state, v.timer, v.target, v.sting = "dizzy", STING_DIZZY, None, False
+
+
 def bump(room, flier, victim):
     if victim.safe > 0:
         return
-    victim.state, victim.timer = "dizzy", DIZZY_SECONDS
+    victim.state, victim.timer, victim.sting = "dizzy", DIZZY_SECONDS, False
     fx(room, "bump", victim.x, victim.y, victim.slot)
-    hurt(room, victim, BUMP_DMG, "bumped by %s" % label(flier))
+    hurt(room, victim, BUMP_DMG, "bumped by %s" % label(flier), by=flier)
 
 
 def step_predators(room, dt, now):
@@ -738,7 +835,10 @@ def drop(b, w):
 def on_control(b, m):
     room = b.room
     t = m.get("t")
-    if t == "to":
+    if t == "sting":
+        if room.phase == "play":
+            arm_sting(b)
+    elif t == "to":
         fi = m.get("f")
         if room.phase == "play" and type(fi) is int and 0 <= fi < len(room.world["flowers"]):
             launch(b, fi)
