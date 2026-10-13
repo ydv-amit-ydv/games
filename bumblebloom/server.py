@@ -402,14 +402,24 @@ def start_countdown(room, fresh=True):
     seats = sorted(room.seats.values(), key=lambda s: s.slot)
     room.workers = [new_worker(s, j) for s in seats for j in range(k)]
     room.world = make_world(len(room.workers), random.randrange(1 << 30))
-    starts = spread_starts(room.world, len(room.workers))
-    for w, fi in zip(room.workers, starts):
-        f = room.world["flowers"][fi]
-        f["owner"] = w.slot
-        w.f, w.rad, w.ang = fi, f["R"], random.uniform(0, math.tau)
-        w.dir = 1 if w.slot % 2 == 0 else -1
-        w.wait = random.uniform(*SKILL[room.skill]["wait"])
-        place_on_orbit(w, f)
+    fl = room.world["flowers"]
+    homes = spread_starts(room.world, len(seats))
+    taken = set(homes)
+    for s, home in zip(seats, homes):
+        # a player's bees start together: one on their home flower, the others on
+        # the nearest white flowers, so they grow one patch instead of scattered ones
+        fl[home]["owner"] = s.slot
+        team = [w for w in room.workers if w.seat is s]
+        near = sorted((i for i in range(len(fl)) if i not in taken),
+                      key=lambda i: math.hypot(fl[i]["x"] - fl[home]["x"], fl[i]["y"] - fl[home]["y"]))
+        spots = [home] + near[:len(team) - 1]
+        taken.update(spots)
+        for w, fi in zip(team, spots):
+            f = fl[fi]
+            w.f, w.rad, w.ang = fi, f["R"], random.uniform(0, math.tau)
+            w.dir = 1 if w.slot % 2 == 0 else -1
+            w.wait = random.uniform(*SKILL[room.skill]["wait"])
+            place_on_orbit(w, f)
     room.preds = []
     room.fx = []
     room.last_end = None
@@ -573,7 +583,11 @@ def rival_in_way(room, w, fi):
 
 
 def start_sting(w):
+    """One sting per player: the bee that takes it dashes, and every other bee of theirs is disarmed."""
     s = w.seat
+    for o in s.room.workers if s.room else ():
+        if o.seat is s:
+            o.sting = False
     w.sting, s.sting_armed, s.sting_cd = True, False, STING_CD
 
 

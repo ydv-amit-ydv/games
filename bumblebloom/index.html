@@ -224,6 +224,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <p><b>Sting dash</b> (button or <b>E</b>): your flight becomes a fast dash that hits the first rival it touches for 35 health. Knock them out within 4 s and their dropped honey is yours. 8 s cooldown.</p>
     <p><b>Auto sting</b> (lobby switch): when your sting is ready, a flight at a rival turns into the dash by itself.</p>
     <p><b>Several bees</b> (levels 2 and 3): a bee is free once it circles one of your own flowers (the white ring). Tap a flower and your nearest free bee goes.</p>
+    <p><b>Vine reach:</b> faint dots run from your flowers to every flower close enough to join them. Take a dotted one and your patch grows.</p>
     <p>So one big patch beats many small ones. Steal the middle flower of a rival's patch to split it in two. The label on each patch shows what it earns.</p>
     <button id="helpclose" type="button">Got it</button>
   </div>
@@ -580,8 +581,9 @@ function frame(now) {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
     const ids = new Set(seatIds()), mine = S.b.filter(b => ids.has(b.seat)), webs = webbed(S);
     const free = lvl.workers > 1 ? new Set(mine.filter(b => isFree(S, b, webs)).map(b => b.id)) : null;
+    const ready = new Set(S.b.filter(b => isFree(S, b, webs)).map(b => b.id));   // bees that could take a sting
     lastS = S;
-    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims(), free });
+    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims(), free, ready, reachSlots: seats.map(s => s.slot) });
     hud(S);
   }
   requestAnimationFrame(frame);

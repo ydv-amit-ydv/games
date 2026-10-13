@@ -152,12 +152,21 @@ const BloomSim = (() => {
       const k = this.perSeat();
       this.workers = this.sorted().flatMap(s => Array.from({ length: k }, (_, j) => this.newWorker(s, j)));
       this.world = makeWorld(this.workers.length, Math.floor(rand() * 2 ** 30));
-      const starts = spreadStarts(this.world, this.workers.length);
-      this.workers.forEach((w, i) => {
-        if (starts[i] == null) return;
-        const f = this.world.flowers[starts[i]];
-        f.owner = w.slot; w.f = starts[i]; w.rad = f.R; w.ang = uniform(0, TAU); w.dir = w.slot % 2 === 0 ? 1 : -1;
-        w.wait = uniform(...SKILL[this.skill].wait); this.place(w, f);
+      const fl = this.world.flowers, seats = this.sorted(), homes = spreadStarts(this.world, seats.length), taken = new Set(homes);
+      seats.forEach((s, k) => {
+        // a player's bees start together: one on their home flower, the others on
+        // the nearest white flowers, so they grow one patch instead of scattered ones
+        const home = homes[k]; if (home == null) return;
+        fl[home].owner = s.slot;
+        const team = this.workers.filter(w => w.seat === s);
+        const near = fl.map((_, i) => i).filter(i => !taken.has(i)).sort((a, b) => hyp(fl[a].x - fl[home].x, fl[a].y - fl[home].y) - hyp(fl[b].x - fl[home].x, fl[b].y - fl[home].y));
+        const spots = [home, ...near.slice(0, team.length - 1)];
+        spots.forEach(i => taken.add(i));
+        team.forEach((w, j) => {
+          const f = fl[spots[j]];
+          w.f = spots[j]; w.rad = f.R; w.ang = uniform(0, TAU); w.dir = w.slot % 2 === 0 ? 1 : -1;
+          w.wait = uniform(...SKILL[this.skill].wait); this.place(w, f);
+        });
       });
       this.preds = []; this.fxq = []; this.lastEnd = null;
       this.broadcast(this.lobbyMsg());
@@ -251,7 +260,8 @@ const BloomSim = (() => {
       return this.workers.some(o => o.slot !== w.slot && (o.state === "orbit" || o.state === "fly") && o.safe <= 0 &&
         (segDist(w.x, w.y, t.x, t.y, o.x, o.y) < 40 || (o.state === "orbit" && o.f === fi)));
     }
-    startSting(w) { w.sting = true; w.seat.stingArmed = false; w.seat.stingCd = STING_CD; }
+    // one sting per player: the bee that takes it dashes, and every other bee of theirs is disarmed
+    startSting(w) { this.workers.forEach(o => { if (o.seat === w.seat) o.sting = false; }); w.sting = true; w.seat.stingArmed = false; w.seat.stingCd = STING_CD; }
     armSting(s) {
       if (s.stingCd > 0 || s.stingArmed || this.workers.some(w => w.seat === s && w.sting)) return;
       const flying = this.workers.find(w => w.seat === s && w.state === "fly");

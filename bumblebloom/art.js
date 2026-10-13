@@ -425,6 +425,16 @@ const Garden = (() => {
     const owners = S.o || [];
     const slots = [...new Set(owners.filter(v => v != null))];
     slots.forEach(sl => patches(owners, sl).forEach(p => { for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) if (Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y) <= world.link) Art.vine(ctx, p[i], p[j], PC[sl], t); }));
+    // vine reach: faint dots from my flowers to every flower close enough to join them
+    (o.reachSlots || []).forEach(sl => {
+      ctx.save(); ctx.strokeStyle = PC[sl]; ctx.globalAlpha = .4; ctx.lineWidth = 2.5; ctx.lineCap = "round"; ctx.setLineDash([1, 9]);
+      world.fl.forEach((a, i) => { if (owners[i] !== sl) return; world.fl.forEach((b, j) => {
+        if (owners[j] === sl || Math.hypot(a.x - b.x, a.y - b.y) > world.link) return;
+        const d = Math.hypot(b.x - a.x, b.y - a.y) || 1, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d;
+        ctx.beginPath(); ctx.moveTo(a.x + ux * a.r, a.y + uy * a.r); ctx.lineTo(b.x - ux * b.r, b.y - uy * b.r); ctx.stroke();
+      }); });
+      ctx.restore();
+    });
     Art.flytrap(ctx, world.trap[0], world.trap[1], t);
     // bird shadows sit under everything that flies
     (S.p || []).filter(p => p[0] === "b").forEach(p => { if (p[3] < 1) Art.birdShadow(ctx, p[1], p[2], p[3], 75, t); });
@@ -457,7 +467,13 @@ const Garden = (() => {
       const f = world.fl[a.f], bad = hitsTrap(b, f), who = solo ? "" : (b.name || "") + ": ";
       const armed = b.armed || b.sting;
       const col = bad ? "#e8504f" : armed ? "#d9411e" : solo ? "rgba(255,255,255,.95)" : PC[b.slot];
-      const what = a.mode === "pick" ? "flying here…" : armed ? "sting dash here" : solo ? "tap to fly here" : "lift to fly here";
+      let what = a.mode === "pick" ? "flying here…" : armed ? "sting dash here" : solo ? "tap to fly here" : "lift to fly here";
+      if (owners[a.f] !== b.slot) {
+        // what this flower would add: the patches of mine it touches, joined into one
+        const touch = patches(owners, b.slot).filter(p => p.some(q => Math.hypot(q.x - f.x, q.y - f.y) <= world.link));
+        const n = 1 + touch.reduce((s, p) => s + p.length, 0);
+        what += n > 1 ? ` · joins ${n} flowers: +${n * n}/s` : " · too far to join yours";
+      }
       aimLine(b, f, col, bad ? who + "this way hits the flytrap!" : who + what, bad ? "#c03a3a" : armed ? "#b8361a" : null);
     });
     // particles
@@ -504,7 +520,8 @@ const Garden = (() => {
         ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - ux * L, b.y - uy * L); ctx.stroke(); ctx.restore();
       }
       ctx.save(); ctx.translate(b.x, b.y); ctx.scale(zoom, zoom);
-      if ((b.armed || b.sting) && b.st < 2) {
+      // the stinger glows on the bee dashing now, or (while armed) on each bee free to take it
+      if (b.st < 2 && (b.sting || (b.armed && (!o.ready || o.ready.has(b.id))))) {
         // the stinger glows while a sting is ready to go
         ctx.save(); ctx.rotate(ang);
         const p = .6 + .4 * Math.sin(t * 12);
