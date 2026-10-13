@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BUMBLEBLOOM - a one-button garden race for 1 to 8 bumblebees.
+BUMBLEBLOOM - a tap-to-fly garden race for 1 to 8 players.
 Zero dependencies (Python 3.8+).   Run:  python server.py   ->  open http://<your-ip>:8000
 
 Same shape as The Last Garden's server: one asyncio process serves the pages
@@ -9,12 +9,18 @@ can show the garden at /board?code=CODE, and the server owns the whole
 simulation, so every phone sees the same garden.
 
 The game
-  Each bee circles a flower on its own. TAP any flower and the bee flies
-  straight to it (tap another mid-flight to change course); a straight line
-  through the flytrap gets bitten, so sometimes you hop round it.
+  Each player (a seat) commands one or more bees (workers). A bee circles a
+  flower on its own. TAP any flower and a bee flies straight to it; a
+  straight line through the flytrap gets bitten, so sometimes you hop round it.
   Circle a white flower once (a rival's: twice) and it blooms in your colour.
   Your flowers that sit close together are joined by vines into a patch, and
   a patch of n flowers makes n*n honey a second.
+
+  Levels: a match is one round (Meadow, one bee each) or three levels -
+  Meadow, Orchard (two bees each), Hive (three bees each), in ever bigger
+  gardens, with honey added up across them. With more than one bee, a bee is
+  FREE once it is circling one of your own flowers (it has finished
+  pollinating), and a tap sends your nearest free bee.
 
   Bees have 100 health. Predators turn up at random:
     dragonfly  darts straight across the lawn and stings any bee it touches
@@ -22,13 +28,17 @@ The game
     spider     drops onto a flower and webs it; circling there hurts
   plus the Venus flytrap in the middle, which bites any bee that flies into it.
   Circling one of your own flowers heals. At 0 health a bee faints, drops
-  some honey and comes back on one of its flowers a few seconds later.
+  some of its player's honey and comes back on one of their flowers.
 
-  Sting dash: tap Sting and your flight becomes a fast dash; the first rival
-  it touches loses 35 health and goes dizzy. If that rival faints within a
-  few seconds, its dropped honey goes to you (the bounty). 8 s cooldown.
+  Sting dash: tap Sting and your next (or current) flight becomes a fast
+  dash; the first rival it touches loses 35 health and goes dizzy. If that
+  bee faints within a few seconds, the honey it drops goes to you (the
+  bounty). 8 s cooldown, per player.
   Fortified patches: a patch of 4+ joined flowers grows a hedge, and its
   flowers take 3 loops to steal instead of 2.
+
+  Bot bees come in three skills - easy, normal, hard - which change how
+  quickly they move on, how well they choose, and whether they sting.
 """
 import asyncio, base64, hashlib, json, math, os, random, socket, string, struct, time
 
@@ -38,8 +48,9 @@ TICK = 1 / 60
 SEND_EVERY = 3                      # state goes out at 20 Hz
 ROUND_SECONDS = int(os.environ.get("BLOOM_ROUND", 120))
 RESULTS_SECONDS = 15
+BETWEEN_LEVELS = 10                 # the results pause between levels of a match
 COUNTDOWN = 3
-MAX_BEES = 8
+MAX_SEATS = 8
 MAX_ROOMS = 100
 ROOM_IDLE_TTL = 300
 RESUME_GRACE = 120
@@ -47,10 +58,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CODE_CHARS = "".join(c for c in string.ascii_uppercase + string.digits if c not in "0O1IL")
 NAMES = ["Red", "Blue", "Gold", "Violet", "Orange", "Pink", "Teal", "Brown"]
 
+# ---- levels: how many bees each player commands
+LEVELS = [{"name": "Meadow", "workers": 1}, {"name": "Orchard", "workers": 2}, {"name": "Hive", "workers": 3}]
+
+# ---- bot skill: pause before moving on (s), chance of a random pick, chance of
+#      not checking the flytrap path, chance of using a sting when a rival is in the way
+SKILL = {
+    "easy":   {"wait": (1.6, 3.2), "random": 0.40, "careless": 0.25, "sting": 0.0},
+    "normal": {"wait": (0.9, 1.8), "random": 0.15, "careless": 0.0, "sting": 0.4},
+    "hard":   {"wait": (0.4, 1.0), "random": 0.0, "careless": 0.0, "sting": 1.0},
+}
+
 # ---- flight
 # Circling only matters for pollinating now, so it is a steady, calm turn.
-OMEGA0 = OMEGA1 = 2.0               # radians per second: one loop is about 3 s
-OMEGA_GAIN = 0.0
+OMEGA0 = 2.0                        # radians per second: one loop is about 3 s
 FLY_V = 320.0                       # tap a flower and the bee flies straight there at this speed
 ORBIT_GAP = 26.0                    # orbit radius = flower radius + this
 BEE_R = 9.0
@@ -59,7 +80,7 @@ BEE_R = 9.0
 HP_MAX = 100.0
 HEAL_PER_S = 7.0                    # while circling one of your own flowers
 FAINT_SECONDS = 3.0
-FAINT_HONEY_LOSS = 0.15
+FAINT_HONEY_LOSS = 0.15             # of the player's honey, split between their bees
 SAFE_SECONDS = 1.5                  # after coming back nothing can hurt you
 DIZZY_SECONDS = 1.6
 BUMP_DMG = 10
@@ -68,15 +89,15 @@ DRAGON_DMG = 25
 BIRD_DMG = 45
 WEB_DPS = 18
 
-# ---- sting dash: tap Sting, and your flight becomes a fast dash that hits the first rival it touches
+# ---- sting dash
 STING_DMG = 35
-STING_CD = 8.0                      # seconds between stings
+STING_CD = 8.0                      # seconds between stings, per player
 STING_SPEED = 1.45                  # a dash flies this much faster than a normal flight
 STING_REACH = BEE_R * 2.6           # a little more forgiving than a bump
 STING_DIZZY = 1.0
 BOUNTY_WINDOW = 4.0                 # faint this soon after a sting or bump and the honey goes to whoever hit you
 
-# ---- fortified patches: big patches grow a hedge, so their flowers are slower to steal
+# ---- fortified patches
 FORTIFY_SIZE = 4                    # a patch of this many joined flowers is fortified
 FORTIFY_LOOPS = 3                   # loops a rival needs to take one of its flowers (normally 2)
 
@@ -91,14 +112,15 @@ BIRD_WARN = 1.8
 BIRD_R = 75.0
 WEB_SECONDS = 10.0
 
-# arena size and flower count by number of bees
-SIZES = [(2, 1240, 780, 10), (4, 1440, 880, 14), (6, 1640, 980, 18), (8, 1840, 1080, 22)]
+# arena size and flower count by number of bees in it (all players' bees together)
+SIZES = [(2, 1240, 780, 10), (4, 1440, 880, 14), (6, 1640, 980, 18), (8, 1840, 1080, 22),
+         (12, 2040, 1180, 28), (16, 2240, 1300, 34), (24, 2540, 1460, 44)]
 
 
 # ------------------------------------------------------------------ world
 def make_world(n_bees, seed):
     rng = random.Random(seed)
-    W, H, count = next((w, h, c) for cap, w, h, c in SIZES if n_bees <= cap)
+    W, H, count = next(((w, h, c) for cap, w, h, c in SIZES if n_bees <= cap), SIZES[-1][1:])
     cx, cy = W / 2, H / 2
     flowers = []
     dmin = math.sqrt(W * H / count) * 0.66
@@ -127,7 +149,7 @@ def spread_starts(world, n):
     cx, cy = world["trap"]
     first = max(range(len(fl)), key=lambda i: math.hypot(fl[i]["x"] - cx, fl[i]["y"] - cy))
     picks = [first]
-    while len(picks) < n:
+    while len(picks) < min(n, len(fl)):
         best = max((i for i in range(len(fl)) if i not in picks),
                    key=lambda i: min(math.hypot(fl[i]["x"] - fl[j]["x"], fl[i]["y"] - fl[j]["y"]) for j in picks))
         picks.append(best)
@@ -141,12 +163,11 @@ def seg_dist(ax, ay, bx, by, px, py):
     return math.hypot(ax + u * dx - px, ay + u * dy - py)
 
 
-# ------------------------------------------------------------------ bees
-class Bee:
-    __slots__ = ("id", "slot", "name", "w", "room", "key", "bot", "gone", "down",
-                 "state", "f", "ang", "rad", "dir", "v", "prog", "x", "y", "vx", "vy",
-                 "timer", "hp", "safe", "score", "hit_cd", "target", "wait", "fly_t", "faints", "blooms",
-                 "sting", "sting_armed", "sting_cd", "last_hit", "knocks")
+# ------------------------------------------------------------------ players and bees
+class Seat:
+    """A player: a phone (or a bot), their colour, their honey and their sting."""
+    __slots__ = ("id", "slot", "name", "w", "room", "key", "bot", "gone", "dev",
+                 "score", "total", "faints", "blooms", "knocks", "sting_cd", "sting_armed", "auto")
 
     def send(self, frame):
         if self.w is None:
@@ -160,6 +181,12 @@ class Bee:
         self.w.write(frame)
 
 
+class Worker:
+    """One bee in the garden. A player has one in the Meadow, more in later levels."""
+    __slots__ = ("id", "seat", "slot", "state", "f", "ang", "rad", "dir", "v", "prog", "x", "y", "vx", "vy",
+                 "timer", "hp", "safe", "hit_cd", "target", "wait", "sting", "last_hit")
+
+
 class Watcher:
     __slots__ = ("w", "room")
 
@@ -171,7 +198,8 @@ class Watcher:
 class Room:
     def __init__(self, code):
         self.code = code
-        self.bees = {}              # id -> Bee (humans and bots)
+        self.seats = {}             # id -> Seat (humans and bots)
+        self.workers = []           # every bee in the garden this round
         self.watchers = set()
         self.host = None
         self.phase = "lobby"        # lobby | countdown | play | results
@@ -186,8 +214,12 @@ class Room:
         self.tick = 0
         self.empty_since = None
         self.solo = False
+        self.shared = False         # two players on one screen: one bee each, always
         self.bots_wanted = 0
-        self.last_rank = []
+        self.skill = "easy"
+        self.match = "single"       # single | levels
+        self.level = 0
+        self.last_end = None
         self.fort = set()           # flowers in a fortified patch, worked out each tick
 
 
@@ -195,34 +227,54 @@ ROOMS = {}
 NEXT_ID = 1
 
 
-def new_bee(name, bot=False):
+def clean_name(v):
+    return "".join(c for c in str(v or "") if c.isprintable())[:14].strip()
+
+
+def new_seat(name, bot=False):
     global NEXT_ID
-    b = Bee()
-    b.id, NEXT_ID = NEXT_ID, NEXT_ID + 1
-    name = "".join(c for c in str(name or "") if c.isprintable())[:14].strip()
-    b.name = name
-    b.w, b.room, b.bot, b.gone, b.down = None, None, bot, None, False
-    b.key = base64.urlsafe_b64encode(os.urandom(12)).decode().rstrip("=")
-    b.slot = 0
-    reset_bee(b)
-    return b
+    s = Seat()
+    s.id, NEXT_ID = NEXT_ID, NEXT_ID + 1
+    s.name = clean_name(name)
+    s.w, s.room, s.bot, s.gone, s.dev = None, None, bot, None, ""
+    s.auto = not bot                # auto sting: a flight at a rival becomes a dash by itself
+    s.key = base64.urlsafe_b64encode(os.urandom(12)).decode().rstrip("=")
+    s.slot = 0
+    s.total = 0.0
+    reset_seat(s)
+    return s
 
 
-def reset_bee(b):
-    b.state, b.f, b.ang, b.rad, b.dir, b.v, b.prog = "orbit", 0, 0.0, 40.0, 1, OMEGA0, 0.0
-    b.x = b.y = b.vx = b.vy = 0.0
-    b.timer, b.hp, b.safe, b.score, b.hit_cd = 0.0, HP_MAX, 0.0, 0.0, 0.0
-    b.target, b.wait, b.fly_t, b.faints, b.blooms = None, 1.0, 0.0, 0, 0
-    b.sting, b.sting_armed, b.sting_cd, b.last_hit, b.knocks = False, False, 0.0, None, 0
+def reset_seat(s):
+    s.score, s.faints, s.blooms, s.knocks, s.sting_cd, s.sting_armed = 0.0, 0, 0, 0, 0.0, False
+
+
+def new_worker(seat, k):
+    w = Worker()
+    w.id, w.seat, w.slot = seat.id * 10 + k, seat, seat.slot
+    w.state, w.f, w.ang, w.rad, w.dir, w.v, w.prog = "orbit", 0, 0.0, 40.0, 1, OMEGA0, 0.0
+    w.x = w.y = w.vx = w.vy = 0.0
+    w.timer, w.hp, w.safe, w.hit_cd = 0.0, HP_MAX, 0.0, 0.0
+    w.target, w.wait, w.sting, w.last_hit = None, 1.0, False, None
+    return w
 
 
 def free_slot(room):
-    used = {b.slot for b in room.bees.values()}
-    return next(i for i in range(MAX_BEES) if i not in used)
+    used = {s.slot for s in room.seats.values()}
+    return next(i for i in range(MAX_SEATS) if i not in used)
 
 
-def label(b):
-    return b.name or (NAMES[b.slot] + " bee")
+def label(s):
+    return s.name or (NAMES[s.slot] + " bee")
+
+
+def workers_per_seat(room):
+    return LEVELS[room.level]["workers"]
+
+
+def devices(room):
+    """How many separate devices the human players are on."""
+    return len({s.dev or s.id for s in room.seats.values() if not s.bot})
 
 
 # ------------------------------------------------------------------ wire
@@ -243,8 +295,8 @@ def F(o):
 
 
 def broadcast(room, frame):
-    for b in room.bees.values():
-        b.send(frame)
+    for s in room.seats.values():
+        s.send(frame)
     for w in room.watchers:
         w.send(frame)
 
@@ -256,20 +308,30 @@ def gen_code():
             return code
 
 
+def level_info(room):
+    lv = LEVELS[room.level]
+    return {"idx": room.level, "name": lv["name"], "workers": lv["workers"],
+            "of": len(LEVELS) if room.match == "levels" else 1, "match": room.match}
+
+
 def lobby_msg(room):
-    return F({"t": "lobby", "code": room.code, "host": room.host, "solo": room.solo,
-              "bots": room.bots_wanted, "phase": room.phase,
-              "bees": [{"id": b.id, "slot": b.slot, "name": label(b), "bot": b.bot,
-                        "away": b.gone is not None}
-                       for b in sorted(room.bees.values(), key=lambda b: b.slot)]})
+    humans = [s for s in room.seats.values() if not s.bot]
+    return F({"t": "lobby", "code": room.code, "host": room.host, "solo": room.solo, "shared": room.shared,
+              "bots": room.bots_wanted, "skill": room.skill, "match": room.match, "phase": room.phase,
+              "devices": devices(room), "canLevels": not room.shared,
+              "bees": [{"id": s.id, "slot": s.slot, "name": label(s), "bot": s.bot, "away": s.gone is not None,
+                        "auto": s.auto} for s in sorted(humans, key=lambda s: s.slot)]})
 
 
 def world_msg(room):
     wd = room.world
     return {"W": wd["W"], "H": wd["H"], "seed": wd["seed"], "link": wd["link"],
             "trap": wd["trap"], "flowers": [[f["x"], f["y"], f["r"]] for f in wd["flowers"]],
-            "bees": [{"id": b.id, "slot": b.slot, "name": label(b), "bot": b.bot}
-                     for b in sorted(room.bees.values(), key=lambda b: b.slot)],
+            "seats": [{"id": s.id, "slot": s.slot, "name": label(s), "bot": s.bot}
+                      for s in sorted(room.seats.values(), key=lambda s: s.slot)],
+            "bees": [{"id": w.id, "slot": w.slot, "name": label(w.seat), "bot": w.seat.bot, "seat": w.seat.id}
+                     for w in room.workers],
+            "level": level_info(room),
             "cfg": {"hp": HP_MAX, "secs": ROUND_SECONDS, "flyV": FLY_V, "trapR": TRAP_R + BEE_R,
                     "stingCd": STING_CD, "fortSize": FORTIFY_SIZE, "fortLoops": FORTIFY_LOOPS}}
 
@@ -277,12 +339,14 @@ def world_msg(room):
 def state_msg(room, now):
     wd = room.world
     bees = []
-    for b in room.bees.values():
-        st = {"orbit": 0, "fly": 1, "dizzy": 2, "faint": 3}[b.state]
-        bees.append([b.id, round(b.x, 1), round(b.y, 1), round(b.ang, 3), st, round(b.hp),
-                     int(b.score), round(b.prog, 2), b.f, b.dir, round(b.rad, 1),
-                     round(b.vx, 1), round(b.vy, 1), 1 if b.safe > 0 else 0, round(b.v, 2), -1 if b.target is None or b.state != "fly" else b.target,
-                     1 if b.sting else 0, 1 if b.sting_armed else 0, round(b.sting_cd, 1)])
+    for w in room.workers:
+        s = w.seat
+        st = {"orbit": 0, "fly": 1, "dizzy": 2, "faint": 3}[w.state]
+        bees.append([w.id, round(w.x, 1), round(w.y, 1), round(w.ang, 3), st, round(w.hp),
+                     int(s.score), round(w.prog, 2), w.f, w.dir, round(w.rad, 1),
+                     round(w.vx, 1), round(w.vy, 1), 1 if w.safe > 0 else 0, round(w.v, 2),
+                     -1 if w.target is None or w.state != "fly" else w.target,
+                     1 if w.sting else 0, 1 if s.sting_armed else 0, round(s.sting_cd, 1), s.id, int(s.total)])
     preds = []
     for p in room.preds:
         if p["k"] == "dragon":
@@ -307,33 +371,48 @@ def fx(room, kind, x, y, slot=-1):
     room.fx.append([kind, round(x), round(y), slot])
 
 
+def note(seat, text):
+    """A message for one player only (e.g. all their bees are busy)."""
+    seat.send(F({"t": "note", "x": text}))
+
+
 # ------------------------------------------------------------------ phases
-def start_countdown(room):
+def start_countdown(room, fresh=True):
+    """Grow a garden and put everyone's bees in it. fresh: a new match from the lobby."""
     room.phase = "countdown"
     room.t_phase = time.time() + COUNTDOWN
-    # fill seats with bots
-    humans = [b for b in room.bees.values() if not b.bot]
-    for b in [b for b in room.bees.values() if b.bot]:
-        room.bees.pop(b.id)
-    want = max(0, min(MAX_BEES - len(humans), room.bots_wanted))
-    if len(humans) == 1 and want == 0:
-        want = 3                    # nobody plays a garden alone
-    for _ in range(want):
-        bot = new_bee("", bot=True)
-        bot.slot = free_slot(room)
-        bot.room = room
-        room.bees[bot.id] = bot
-    room.world = make_world(len(room.bees), random.randrange(1 << 30))
-    starts = spread_starts(room.world, len(room.bees))
-    for b, fi in zip(sorted(room.bees.values(), key=lambda b: b.slot), starts):
-        reset_bee(b)
+    if fresh:
+        room.level = 0
+        if room.shared or room.match not in ("single", "levels"):
+            room.match = "single"
+        for s in [s for s in room.seats.values() if s.bot]:
+            room.seats.pop(s.id)
+        humans = [s for s in room.seats.values() if not s.bot]
+        want = max(0, min(MAX_SEATS - len(humans), room.bots_wanted))
+        for _ in range(want):
+            bot = new_seat("", bot=True)
+            bot.slot = free_slot(room)
+            bot.room = room
+            room.seats[bot.id] = bot
+        for s in room.seats.values():
+            s.total = 0.0
+    for s in room.seats.values():
+        reset_seat(s)
+    k = workers_per_seat(room)
+    seats = sorted(room.seats.values(), key=lambda s: s.slot)
+    room.workers = [new_worker(s, j) for s in seats for j in range(k)]
+    room.world = make_world(len(room.workers), random.randrange(1 << 30))
+    starts = spread_starts(room.world, len(room.workers))
+    for w, fi in zip(room.workers, starts):
         f = room.world["flowers"][fi]
-        f["owner"] = b.slot
-        b.f, b.rad, b.ang = fi, f["R"], random.uniform(0, math.tau)
-        b.dir = 1 if b.slot % 2 == 0 else -1
-        place_on_orbit(b, f)
+        f["owner"] = w.slot
+        w.f, w.rad, w.ang = fi, f["R"], random.uniform(0, math.tau)
+        w.dir = 1 if w.slot % 2 == 0 else -1
+        w.wait = random.uniform(*SKILL[room.skill]["wait"])
+        place_on_orbit(w, f)
     room.preds = []
     room.fx = []
+    room.last_end = None
     broadcast(room, lobby_msg(room))
     broadcast(room, F({"t": "go", "in": COUNTDOWN, **world_msg(room)}))
 
@@ -345,73 +424,90 @@ def start_play(room, now):
 
 
 def end_round(room, now):
+    for s in room.seats.values():
+        s.total += s.score
+    more = room.match == "levels" and room.level < len(LEVELS) - 1
     room.phase = "results"
-    room.t_phase = now + RESULTS_SECONDS
-    rank = sorted(room.bees.values(), key=lambda b: -b.score)
-    room.last_rank = [{"slot": b.slot, "name": label(b), "honey": int(b.score), "bot": b.bot,
-                       "blooms": b.blooms, "faints": b.faints, "knocks": b.knocks,
-                       "flowers": sum(1 for f in room.world["flowers"] if f["owner"] == b.slot),
-                       "patch": max((len(p) for p in patches(room.world, b.slot)), default=0),
-                       "rate": sum(len(p) ** 2 for p in patches(room.world, b.slot))}
-                      for b in rank]
-    broadcast(room, F({"t": "end", "rank": room.last_rank}))
+    room.t_phase = now + (BETWEEN_LEVELS if more else RESULTS_SECONDS)
+    key = (lambda s: -s.score) if room.match == "single" else (lambda s: -s.total)
+    rank = []
+    for s in sorted(room.seats.values(), key=key):
+        ps = patches(room.world, s.slot)
+        rank.append({"slot": s.slot, "name": label(s), "honey": int(s.score), "total": int(s.total), "bot": s.bot,
+                     "blooms": s.blooms, "faints": s.faints, "knocks": s.knocks,
+                     "flowers": sum(1 for f in room.world["flowers"] if f["owner"] == s.slot),
+                     "patch": max((len(p) for p in ps), default=0), "rate": sum(len(p) ** 2 for p in ps)})
+    room.last_end = {"t": "end", "rank": rank, "level": level_info(room), "final": not more,
+                     "next": LEVELS[room.level + 1]["name"] if more else None,
+                     "nextWorkers": LEVELS[room.level + 1]["workers"] if more else None,
+                     "in": BETWEEN_LEVELS if more else RESULTS_SECONDS}
+    broadcast(room, F(room.last_end))
+
+
+def after_results(room):
+    if room.match == "levels" and room.level < len(LEVELS) - 1:
+        room.level += 1
+        start_countdown(room, fresh=False)
+    else:
+        back_to_lobby(room)
 
 
 def back_to_lobby(room):
     room.phase = "lobby"
-    for b in [b for b in room.bees.values() if b.bot]:
-        room.bees.pop(b.id)
-    for b in [b for b in room.bees.values() if b.gone is not None]:
-        room.bees.pop(b.id)
-    if room.host not in room.bees and room.bees:
-        room.host = next(iter(room.bees))
+    room.level = 0
+    room.workers = []
+    for s in [s for s in room.seats.values() if s.bot or s.gone is not None]:
+        room.seats.pop(s.id)
+    if room.host not in room.seats and room.seats:
+        room.host = next(iter(room.seats))
     broadcast(room, lobby_msg(room))
 
 
 # ------------------------------------------------------------------ simulation
-def place_on_orbit(b, f):
-    b.x = f["x"] + math.cos(b.ang) * b.rad
-    b.y = f["y"] + math.sin(b.ang) * b.rad
+def place_on_orbit(w, f):
+    w.x = f["x"] + math.cos(w.ang) * w.rad
+    w.y = f["y"] + math.sin(w.ang) * w.rad
 
 
-def hurt(room, b, dmg, why, by=None):
-    if b.safe > 0 or b.state == "faint":
+def hurt(room, w, dmg, why, by=None):
+    if w.safe > 0 or w.state == "faint":
         return
-    if by is not None and by is not b:
-        b.last_hit = (by, time.time())      # for the bounty, if this ends in a faint
-    b.hp -= dmg
-    if b.hit_cd <= 0:               # a web hurts every tick; only show a hit now and then
-        b.hit_cd = 0.35
-        fx(room, "hit", b.x, b.y, b.slot)
-    if b.hp <= 0:
-        faint(room, b, why)
+    if by is not None and by.seat is not w.seat:
+        w.last_hit = (by.seat, time.time())     # for the bounty, if this ends in a faint
+    w.hp -= dmg
+    if w.hit_cd <= 0:               # a web hurts every tick; only show a hit now and then
+        w.hit_cd = 0.35
+        fx(room, "hit", w.x, w.y, w.slot)
+    if w.hp <= 0:
+        faint(room, w, why)
 
 
-def faint(room, b, why):
-    b.state, b.timer, b.hp, b.sting, b.sting_armed = "faint", FAINT_SECONDS, 0, False, False
-    lost = int(b.score * FAINT_HONEY_LOSS)
-    b.score -= lost
-    b.faints += 1
-    fx(room, "faint", b.x, b.y, b.slot)
-    hitter, at = b.last_hit or (None, 0)
-    b.last_hit = None
+def faint(room, w, why):
+    s = w.seat
+    w.state, w.timer, w.hp, w.sting = "faint", FAINT_SECONDS, 0, False
+    lost = int(s.score * FAINT_HONEY_LOSS / workers_per_seat(room))
+    s.score -= lost
+    s.faints += 1
+    fx(room, "faint", w.x, w.y, w.slot)
+    hitter, at = w.last_hit or (None, 0)
+    w.last_hit = None
     if hitter is not None and hitter.room is room and time.time() - at <= BOUNTY_WINDOW:
         hitter.score += lost                # the bounty: the honey goes to whoever knocked them out
         hitter.knocks += 1
-        room.toast = "%s knocked out %s and took %d honey!" % (label(hitter), label(b), lost)
+        room.toast = "%s knocked out %s and took %d honey!" % (label(hitter), label(s), lost)
     else:
-        room.toast = "%s fainted (%s) and dropped %d honey" % (label(b), why, lost)
+        room.toast = "%s fainted (%s) and dropped %d honey" % (label(s), why, lost)
 
 
-def respawn(room, b):
+def respawn(room, w):
     fl = room.world["flowers"]
-    own = [i for i, f in enumerate(fl) if f["owner"] == b.slot and f["web"] <= 0]
+    own = [i for i, f in enumerate(fl) if f["owner"] == w.slot and f["web"] <= 0]
     pool = own or [i for i, f in enumerate(fl) if f["owner"] is None and f["web"] <= 0] or list(range(len(fl)))
     fi = random.choice(pool)
     f = fl[fi]
-    b.state, b.f, b.ang, b.rad, b.v, b.prog = "orbit", fi, random.uniform(0, math.tau), f["R"], OMEGA0, 0.0
-    b.hp, b.safe, b.target, b.wait, b.sting = HP_MAX, SAFE_SECONDS, None, 0.6, False
-    place_on_orbit(b, f)
+    w.state, w.f, w.ang, w.rad, w.v, w.prog = "orbit", fi, random.uniform(0, math.tau), f["R"], OMEGA0, 0.0
+    w.hp, w.safe, w.target, w.wait, w.sting = HP_MAX, SAFE_SECONDS, None, 0.6, False
+    place_on_orbit(w, f)
 
 
 def patches(wd, slot):
@@ -433,29 +529,6 @@ def patches(wd, slot):
     return out
 
 
-def launch(b, fi):
-    """Tap a flower and the bee flies straight to it. A new tap changes course."""
-    if b.state not in ("orbit", "fly") or (b.state == "orbit" and fi == b.f):
-        return
-    b.state, b.target, b.prog, b.fly_t = "fly", fi, 0.0, 0.0
-    if b.sting_armed:
-        start_sting(b)
-
-
-def start_sting(b):
-    b.sting, b.sting_armed, b.sting_cd = True, False, STING_CD
-
-
-def arm_sting(b):
-    """Sting while flying and this flight becomes the dash; while circling, the next one does."""
-    if b.sting_cd > 0 or b.sting or b.state not in ("orbit", "fly"):
-        return
-    if b.state == "fly":
-        start_sting(b)
-    else:
-        b.sting_armed = True
-
-
 def fortified(wd):
     """Indexes of flowers in a patch big enough to be fortified."""
     out = set()
@@ -468,142 +541,212 @@ def fortified(wd):
     return out
 
 
-def bot_think(room, b, dt):
+def is_free(room, w):
+    """May this bee take a new order? With one bee: whenever it is up. With
+    several: only once it has finished pollinating - circling one of your own
+    flowers (or caught in a web, which it should leave)."""
+    if workers_per_seat(room) == 1:
+        return w.state in ("orbit", "fly")
+    if w.state != "orbit":
+        return False
+    f = room.world["flowers"][w.f]
+    return f["owner"] == w.slot or f["web"] > 0
+
+
+def launch(room, w, fi):
+    """The bee flies straight to flower fi. A one-bee player can change course mid-flight."""
+    if not (w.state in ("orbit", "fly")) or (w.state == "orbit" and fi == w.f):
+        return False
+    w.state, w.target, w.prog = "fly", fi, 0.0
+    s = w.seat
+    if s.sting_armed or (s.auto and not s.bot and s.sting_cd <= 0 and rival_in_way(room, w, fi)):
+        start_sting(w)
+    return True
+
+
+def rival_in_way(room, w, fi):
+    """Is a rival on the straight line to flower fi, or circling it? (auto sting, and the bots)"""
+    t = room.world["flowers"][fi]
+    return any(o.slot != w.slot and o.state in ("orbit", "fly") and o.safe <= 0 and
+               (seg_dist(w.x, w.y, t["x"], t["y"], o.x, o.y) < 40 or (o.state == "orbit" and o.f == fi))
+               for o in room.workers)
+
+
+def start_sting(w):
+    s = w.seat
+    w.sting, s.sting_armed, s.sting_cd = True, False, STING_CD
+
+
+def arm_sting(room, s):
+    """Sting while a bee is flying and that flight becomes the dash; otherwise the next one does."""
+    if s.sting_cd > 0 or s.sting_armed or any(w.sting for w in room.workers if w.seat is s):
+        return
+    flying = [w for w in room.workers if w.seat is s and w.state == "fly"]
+    if flying:
+        start_sting(flying[0])
+    else:
+        s.sting_armed = True
+
+
+def command(room, s, fi, wid=None):
+    """A player tapped flower fi: send the bee they picked, or their nearest free bee."""
+    fl = room.world["flowers"]
+    mine = [w for w in room.workers if w.seat is s]
+    if wid is not None:
+        pick = [w for w in mine if w.id == wid]
+        if pick and is_free(room, pick[0]):
+            launch(room, pick[0], fi)
+            return
+    t = fl[fi]
+    if len(mine) > 1 and any(w.state == "fly" and w.target == fi for w in mine):
+        return                                  # one of your bees is already on its way there
+    free = [w for w in mine if is_free(room, w) and not (w.state == "orbit" and w.f == fi)]
+    if not free:
+        if any(w.state == "orbit" and w.f == fi for w in mine):
+            return                              # already there
+        note(s, "All your bees are busy pollinating - wait for one to finish")
+        return
+    w = min(free, key=lambda w: math.hypot(w.x - t["x"], w.y - t["y"]))
+    launch(room, w, fi)
+
+
+def bot_think(room, w, dt, skill):
     wd = room.world
     fl = wd["flowers"]
-    if b.state != "orbit":
+    if w.state != "orbit":
         return
-    f = fl[b.f]
-    if f["owner"] != b.slot and f["web"] <= 0:
+    f = fl[w.f]
+    if f["owner"] != w.slot and f["web"] <= 0:
         return                                  # finish pollinating first
-    if f["owner"] == b.slot and b.hp < 45:
-        b.wait = max(b.wait, 0.5)               # rest and heal on your own flower
+    if f["owner"] == w.slot and w.hp < 45:
+        w.wait = max(w.wait, 0.5)               # rest and heal on your own flower
     if f["web"] > 0:
-        b.wait = 0                              # get off a webbed flower now
-    b.wait -= dt
-    if b.wait > 0:
+        w.wait = 0                              # get off a webbed flower now
+    w.wait -= dt
+    if w.wait > 0:
         return
+    sk = SKILL[skill]
     birds = [p for p in room.preds if p["k"] == "bird"]
     cx, cy = wd["trap"]
-    fort = room.fort
-    best, bs = None, 1e9
+    careless = random.random() < sk["careless"]
+    options = []
     for i, t in enumerate(fl):
-        if i == b.f or t["owner"] == b.slot or t["web"] > 0:
+        if i == w.f or t["owner"] == w.slot or t["web"] > 0:
             continue
-        if seg_dist(b.x, b.y, t["x"], t["y"], cx, cy) < TRAP_R + BEE_R + 30:
+        if any(o.seat is w.seat and o.target == i for o in room.workers):
+            continue                            # a teammate is already on its way there
+        if not careless and seg_dist(w.x, w.y, t["x"], t["y"], cx, cy) < TRAP_R + BEE_R + 30:
             continue                            # that straight line runs through the flytrap
         if any(math.hypot(t["x"] - p["x"], t["y"] - p["y"]) < BIRD_R + 40 for p in birds):
             continue
         sc = math.hypot(t["x"] - f["x"], t["y"] - f["y"]) + (120 if t["owner"] is not None else 0) + random.random() * 90
-        if i in fort:
+        if i in room.fort:
             sc += 220                           # a hedge makes it slow to take
-        if sc < bs:
-            bs, best = sc, i
-    if best is not None:
-        t = fl[best]
-        if b.sting_cd <= 0 and any(o.slot != b.slot and o.state in ("orbit", "fly") and
-                                   seg_dist(b.x, b.y, t["x"], t["y"], o.x, o.y) < 40 for o in room.bees.values()):
-            b.sting_armed = True                # a rival sits on the way: make it a dash
-        launch(b, best)
-    else:
-        b.wait = 0.5
+        options.append((sc, i))
+    if not options:
+        w.wait = 0.5
+        return
+    options.sort()
+    best = random.choice(options)[1] if random.random() < sk["random"] else options[0][1]
+    s = w.seat
+    if s.sting_cd <= 0 and random.random() < sk["sting"] and rival_in_way(room, w, best):
+        s.sting_armed = True                    # a rival sits on the way: make it a dash
+    launch(room, w, best)
+    w.wait = random.uniform(*sk["wait"])        # how long it lingers after its next landing
 
 
 def step(room, dt, now):
     wd = room.world
     fl = wd["flowers"]
     cx, cy = wd["trap"]
-    W, H = wd["W"], wd["H"]
     for f in fl:
         f["flash"] = max(0.0, f["flash"] - dt)
         f["web"] = max(0.0, f["web"] - dt)
     room.fort = fortified(wd)
+    for s in room.seats.values():
+        s.sting_cd = max(0.0, s.sting_cd - dt)
 
-    for b in room.bees.values():
-        if b.bot or b.gone is not None:
-            bot_think(room, b, dt)
-        b.safe = max(0.0, b.safe - dt)
-        b.hit_cd = max(0.0, b.hit_cd - dt)
-        b.sting_cd = max(0.0, b.sting_cd - dt)
-        if b.state in ("dizzy", "faint"):
-            b.timer -= dt
-            if b.timer <= 0:
-                respawn(room, b)
+    for w in room.workers:
+        s = w.seat
+        if s.bot:
+            bot_think(room, w, dt, room.skill)
+        elif s.gone is not None:
+            bot_think(room, w, dt, "normal")      # autopilot while their phone is away
+        w.safe = max(0.0, w.safe - dt)
+        w.hit_cd = max(0.0, w.hit_cd - dt)
+        if w.state in ("dizzy", "faint"):
+            w.timer -= dt
+            if w.timer <= 0:
+                respawn(room, w)
             continue
-        if b.state == "orbit":
-            f = fl[b.f]
-            b.v = min(OMEGA1, b.v + OMEGA_GAIN * dt)
-            b.rad += (f["R"] - b.rad) * min(1.0, 6 * dt)
-            w = b.v
-            b.ang = (b.ang + b.dir * w * dt) % math.tau
-            place_on_orbit(b, f)
+        if w.state == "orbit":
+            f = fl[w.f]
+            w.rad += (f["R"] - w.rad) * min(1.0, 6 * dt)
+            w.ang = (w.ang + w.dir * w.v * dt) % math.tau
+            place_on_orbit(w, f)
             if f["web"] > 0:
-                hurt(room, b, WEB_DPS * dt, "caught in a web")
-                if b.state == "faint":
+                hurt(room, w, WEB_DPS * dt, "caught in a web")
+                if w.state == "faint":
                     continue
-            elif f["owner"] == b.slot:
-                b.hp = min(HP_MAX, b.hp + HEAL_PER_S * dt)
+            elif f["owner"] == w.slot:
+                w.hp = min(HP_MAX, w.hp + HEAL_PER_S * dt)
             else:
-                b.prog += w * dt
-                loops = 1 if f["owner"] is None else FORTIFY_LOOPS if b.f in room.fort else 2
-                need = loops * math.tau
-                if b.prog >= need:
-                    f["owner"], f["flash"], b.prog = b.slot, 1.0, 0.0
-                    b.blooms += 1
-                    b.wait = 0.3 + random.random() * 0.8
-                    fx(room, "bloom", f["x"], f["y"], b.slot)
-        elif b.state == "fly":
-            t = fl[b.target]
-            dx, dy = t["x"] - b.x, t["y"] - b.y
+                w.prog += w.v * dt
+                loops = 1 if f["owner"] is None else FORTIFY_LOOPS if w.f in room.fort else 2
+                if w.prog >= loops * math.tau:
+                    f["owner"], f["flash"], w.prog = w.slot, 1.0, 0.0
+                    s.blooms += 1
+                    fx(room, "bloom", f["x"], f["y"], w.slot)
+        elif w.state == "fly":
+            t = fl[w.target]
+            dx, dy = t["x"] - w.x, t["y"] - w.y
             d = math.hypot(dx, dy) or 1
-            spd = FLY_V * (STING_SPEED if b.sting else 1.0)
-            b.vx, b.vy = dx / d * spd, dy / d * spd
-            step_len = spd * dt
-            if d - step_len <= t["R"]:
+            spd = FLY_V * (STING_SPEED if w.sting else 1.0)
+            w.vx, w.vy = dx / d * spd, dy / d * spd
+            if d - spd * dt <= t["R"]:
                 # arrive on the flower's ring and start circling it
-                b.x, b.y = t["x"] - dx / d * t["R"], t["y"] - dy / d * t["R"]
-                rx, ry = b.x - t["x"], b.y - t["y"]
-                b.state, b.f = "orbit", b.target
-                b.ang = math.atan2(ry, rx) % math.tau
-                b.rad = t["R"]
-                b.dir = 1 if rx * b.vy - ry * b.vx >= 0 else -1
-                b.v, b.prog, b.target = OMEGA0, 0.0, None
-                if b.sting:
+                w.x, w.y = t["x"] - dx / d * t["R"], t["y"] - dy / d * t["R"]
+                rx, ry = w.x - t["x"], w.y - t["y"]
+                w.state, w.f = "orbit", w.target
+                w.ang = math.atan2(ry, rx) % math.tau
+                w.rad = t["R"]
+                w.dir = 1 if rx * w.vy - ry * w.vx >= 0 else -1
+                w.v, w.prog, w.target = OMEGA0, 0.0, None
+                if w.sting:
                     # a dash at a flower strikes a rival circling it, wherever they are on the ring
-                    occ = [v for v in room.bees.values() if v is not b and v.slot != b.slot and v.f == b.f
+                    occ = [v for v in room.workers if v.slot != w.slot and v.f == w.f
                            and v.state in ("orbit", "dizzy") and v.safe <= 0]
                     if occ:
-                        sting_hit(room, b, min(occ, key=lambda v: math.hypot(v.x - b.x, v.y - b.y)))
-                b.sting = False                 # a dash that hit nobody ends when you land
-                b.wait = 0.4 + random.random() * 0.6
-                fx(room, "land", b.x, b.y, b.slot)
+                        sting_hit(room, w, min(occ, key=lambda v: math.hypot(v.x - w.x, v.y - w.y)))
+                w.sting = False                 # a dash that hit nobody ends when you land
+                fx(room, "land", w.x, w.y, w.slot)
             else:
-                b.x += b.vx * dt
-                b.y += b.vy * dt
-            if math.hypot(b.x - cx, b.y - cy) < TRAP_R + BEE_R:
+                w.x += w.vx * dt
+                w.y += w.vy * dt
+            if math.hypot(w.x - cx, w.y - cy) < TRAP_R + BEE_R:
                 # flew straight into the flytrap: bitten, dazed, sent home
-                fx(room, "snap", cx, cy, b.slot)
-                b.x, b.y = cx - dx / d * (TRAP_R + BEE_R + 6), cy - dy / d * (TRAP_R + BEE_R + 6)
-                b.state, b.timer, b.target, b.sting = "dizzy", DIZZY_SECONDS, None, False
-                hurt(room, b, TRAP_DMG, "bitten by the flytrap")
+                fx(room, "snap", cx, cy, w.slot)
+                w.x, w.y = cx - dx / d * (TRAP_R + BEE_R + 6), cy - dy / d * (TRAP_R + BEE_R + 6)
+                w.state, w.timer, w.target, w.sting = "dizzy", DIZZY_SECONDS, None, False
+                hurt(room, w, TRAP_DMG, "bitten by the flytrap")
 
     # stings: a dashing bee hits the first rival it reaches, flying or circling
-    for a in room.bees.values():
+    for a in room.workers:
         if not (a.sting and a.state == "fly"):
             continue
-        for v in room.bees.values():
-            if v is a or v.slot == a.slot or v.state not in ("orbit", "fly", "dizzy") or v.safe > 0:
+        for v in room.workers:
+            if v.slot == a.slot or v.state not in ("orbit", "fly", "dizzy") or v.safe > 0:
                 continue
             if math.hypot(a.x - v.x, a.y - v.y) < STING_REACH:
                 sting_hit(room, a, v)
                 break
 
-    # bumping
-    live = [b for b in room.bees.values() if b.state in ("orbit", "fly")]
+    # bumping: a flying bee knocks a circling rival dizzy (teammates pass through each other)
+    live = [w for w in room.workers if w.state in ("orbit", "fly")]
     for i in range(len(live)):
         for j in range(i + 1, len(live)):
             a, c = live[i], live[j]
-            if math.hypot(a.x - c.x, a.y - c.y) > BEE_R * 2:
+            if a.slot == c.slot or math.hypot(a.x - c.x, a.y - c.y) > BEE_R * 2:
                 continue
             if a.state == "fly" and c.state == "orbit":
                 bump(room, a, c)
@@ -612,14 +755,14 @@ def step(room, dt, now):
 
     step_predators(room, dt, now)
 
-    for b in room.bees.values():
-        b.score += sum(len(p) ** 2 for p in patches(wd, b.slot)) * dt
+    for s in room.seats.values():
+        s.score += sum(len(p) ** 2 for p in patches(wd, s.slot)) * dt
 
 
 def sting_hit(room, a, v):
     a.sting = False
     fx(room, "sting", v.x, v.y, a.slot)
-    hurt(room, v, STING_DMG, "stung by %s" % label(a), by=a)
+    hurt(room, v, STING_DMG, "stung by %s" % label(a.seat), by=a)
     if v.state != "faint":
         v.state, v.timer, v.target, v.sting = "dizzy", STING_DIZZY, None, False
 
@@ -629,7 +772,7 @@ def bump(room, flier, victim):
         return
     victim.state, victim.timer, victim.sting = "dizzy", DIZZY_SECONDS, False
     fx(room, "bump", victim.x, victim.y, victim.slot)
-    hurt(room, victim, BUMP_DMG, "bumped by %s" % label(flier), by=flier)
+    hurt(room, victim, BUMP_DMG, "bumped by %s" % label(flier.seat), by=flier)
 
 
 def step_predators(room, dt, now):
@@ -649,21 +792,21 @@ def step_predators(room, dt, now):
             wob = math.cos(p["wob"] * 9) * 60
             p["x"] += p["vx"] * dt + nx / n * wob * dt
             p["y"] += p["vy"] * dt + ny / n * wob * dt
-            for b in room.bees.values():
-                if b.id in p["hit"] or b.state not in ("orbit", "fly"):
+            for w in room.workers:
+                if w.id in p["hit"] or w.state not in ("orbit", "fly"):
                     continue
-                if math.hypot(b.x - p["x"], b.y - p["y"]) < 26:
-                    p["hit"].add(b.id)
-                    hurt(room, b, DRAGON_DMG, "stung by a dragonfly")
+                if math.hypot(w.x - p["x"], w.y - p["y"]) < 26:
+                    p["hit"].add(w.id)
+                    hurt(room, w, DRAGON_DMG, "stung by a dragonfly")
             if -160 < p["x"] < W + 160 and -160 < p["y"] < H + 160:
                 keep.append(p)
         elif p["k"] == "bird":
             if not p["struck"] and p["age"] >= BIRD_WARN:
                 p["struck"] = True
                 fx(room, "swoop", p["x"], p["y"])
-                for b in room.bees.values():
-                    if b.state in ("orbit", "fly", "dizzy") and math.hypot(b.x - p["x"], b.y - p["y"]) < BIRD_R:
-                        hurt(room, b, BIRD_DMG, "caught by a bird")
+                for w in room.workers:
+                    if w.state in ("orbit", "fly", "dizzy") and math.hypot(w.x - p["x"], w.y - p["y"]) < BIRD_R:
+                        hurt(room, w, BIRD_DMG, "caught by a bird")
             if p["age"] < BIRD_WARN + 1.2:
                 keep.append(p)
         elif p["k"] == "spider":
@@ -680,9 +823,8 @@ def spawn_predator(room):
     W, H = wd["W"], wd["H"]
     room.pred_id += 1
     pid = room.pred_id
-    kinds = ["dragon", "bird", "spider"]
-    kind = random.choice(kinds)
-    live = [b for b in room.bees.values() if b.state in ("orbit", "fly")]
+    kind = random.choice(["dragon", "bird", "spider"])
+    live = [w for w in room.workers if w.state in ("orbit", "fly")]
     if kind == "spider":
         choices = [i for i, f in enumerate(fl) if f["owner"] is not None and f["web"] <= 0] or \
                   [i for i, f in enumerate(fl) if f["web"] <= 0]
@@ -695,9 +837,9 @@ def spawn_predator(room):
             room.toast = "A spider is spinning a web on a flower!"
             return
     if kind == "bird" and live:
-        b = random.choice(live)
-        room.preds.append({"k": "bird", "id": pid, "x": b.x + random.uniform(-30, 30),
-                           "y": b.y + random.uniform(-30, 30), "age": 0.0, "struck": False})
+        w = random.choice(live)
+        room.preds.append({"k": "bird", "id": pid, "x": w.x + random.uniform(-30, 30),
+                           "y": w.y + random.uniform(-30, 30), "age": 0.0, "struck": False})
         room.toast = "A bird's shadow! Fly out of it!"
         return
     # dragonfly: from one edge, aimed through a random flower
@@ -752,15 +894,15 @@ def tick_room(room, now):
         if now >= room.t_end:
             end_round(room, now)
     elif room.phase == "results" and now >= room.t_phase:
-        back_to_lobby(room)
+        after_results(room)
 
 
 def sweep(room, now):
-    for b in [b for b in room.bees.values() if b.gone is not None and now - b.gone > RESUME_GRACE]:
-        room.bees.pop(b.id, None)
-        if room.phase in ("lobby",):
+    for s in [s for s in room.seats.values() if s.gone is not None and now - s.gone > RESUME_GRACE]:
+        if room.phase == "lobby":
+            room.seats.pop(s.id, None)
             broadcast(room, lobby_msg(room))
-    humans = [b for b in room.bees.values() if not b.bot and b.gone is None]
+    humans = [s for s in room.seats.values() if not s.bot and s.gone is None]
     if humans or room.watchers:
         room.empty_since = None
     elif room.empty_since is None:
@@ -770,33 +912,45 @@ def sweep(room, now):
 
 
 # ------------------------------------------------------------------ joining
-def join(b, room, w):
+def apply_settings(room, m):
+    """Bots, skill and match length, as chosen on the home screen or in the lobby."""
+    v = m.get("bots")
+    if type(v) is int:
+        room.bots_wanted = max(0, min(MAX_SEATS - 1, v))
+    if m.get("skill") in SKILL:
+        room.skill = m["skill"]
+    if m.get("match") in ("single", "levels"):
+        room.match = "single" if room.shared else m["match"]
+
+
+def join(s, room):
     if room.phase != "lobby":
-        b.send(F({"t": "err", "msg": "That garden is mid-round. Wait for the round to end and try again."}))
+        s.send(F({"t": "err", "msg": "That garden is mid-round. Wait for the round to end and try again."}))
         return False
-    if sum(1 for x in room.bees.values() if not x.bot) >= MAX_BEES:
-        b.send(F({"t": "err", "msg": "That garden is full (8 bees)."}))
+    if sum(1 for x in room.seats.values() if not x.bot) >= MAX_SEATS:
+        s.send(F({"t": "err", "msg": "That garden is full (8 players)."}))
         return False
-    b.room = room
-    b.slot = free_slot(room)
-    room.bees[b.id] = b
+    s.room = room
+    s.slot = free_slot(room)
+    room.seats[s.id] = s
     if room.host is None:
-        room.host = b.id
-    b.send(F({"t": "hi", "id": b.id, "code": room.code, "key": b.key, "slot": b.slot}))
+        room.host = s.id
+    s.send(F({"t": "hi", "id": s.id, "code": room.code, "key": s.key, "slot": s.slot}))
     broadcast(room, lobby_msg(room))
     return True
 
 
-def create(b, w, solo=False):
+def create(s, m):
     if len(ROOMS) >= MAX_ROOMS:
-        b.send(F({"t": "err", "msg": "Too many gardens are open right now."}))
+        s.send(F({"t": "err", "msg": "Too many gardens are open right now."}))
         return None
     room = Room(gen_code())
-    room.solo = solo
-    room.bots_wanted = 3 if solo else 0
+    room.solo = m.get("mode") == "solo"
+    room.shared = bool(m.get("shared"))
+    apply_settings(room, m)
     ROOMS[room.code] = room
-    join(b, room, w)
-    if solo:
+    join(s, room)
+    if room.solo:
         start_countdown(room)
     return room
 
@@ -805,52 +959,54 @@ def resume(w, code, key):
     room = ROOMS.get(str(code or "").upper())
     if not room:
         return None
-    for b in room.bees.values():
-        if not b.bot and b.key == key:
-            b.w, b.gone = w, None
-            b.send(F({"t": "hi", "id": b.id, "code": room.code, "key": b.key, "slot": b.slot}))
-            b.send(lobby_msg(room))
+    for s in room.seats.values():
+        if not s.bot and s.key == key:
+            s.w, s.gone = w, None
+            s.send(F({"t": "hi", "id": s.id, "code": room.code, "key": s.key, "slot": s.slot}))
+            s.send(lobby_msg(room))
             if room.phase in ("countdown", "play"):
-                b.send(F({"t": "go", "in": 0, **world_msg(room)}))
-            elif room.phase == "results":
-                b.send(F({"t": "end", "rank": room.last_rank}))
-            return b
+                s.send(F({"t": "go", "in": 0, **world_msg(room)}))
+            elif room.phase == "results" and room.last_end:
+                s.send(F(room.last_end))
+            return s
     return None
 
 
-def drop(b, w):
-    room = b.room
-    if b.w is not w or room is None:
+def drop(s, w):
+    room = s.room
+    if s.w is not w or room is None:
         return
-    b.w, b.down = None, False
+    s.w = None
     if room.phase == "lobby":
-        room.bees.pop(b.id, None)
-        if room.host == b.id:
-            room.host = next((x.id for x in room.bees.values() if not x.bot), None)
+        room.seats.pop(s.id, None)
+        if room.host == s.id:
+            room.host = next((x.id for x in room.seats.values() if not x.bot), None)
         broadcast(room, lobby_msg(room))
     else:
-        b.gone = time.time()        # autopilot flies the bee until they come back
+        s.gone = time.time()        # autopilot flies their bees until they come back
 
 
-def on_control(b, m):
-    room = b.room
+def on_control(s, m):
+    room = s.room
     t = m.get("t")
     if t == "sting":
         if room.phase == "play":
-            arm_sting(b)
+            arm_sting(room, s)
     elif t == "to":
-        fi = m.get("f")
+        fi, wid = m.get("f"), m.get("b")
         if room.phase == "play" and type(fi) is int and 0 <= fi < len(room.world["flowers"]):
-            launch(b, fi)
-    elif t == "bots" and room.host == b.id and room.phase == "lobby":
-        v = m.get("v")
-        if type(v) is int:
-            room.bots_wanted = max(0, min(MAX_BEES - 1, v))
+            command(room, s, fi, wid if type(wid) is int else None)
+    elif t in ("bots", "skill", "match") and room.host == s.id and room.phase == "lobby":
+        apply_settings(room, {t: m.get("v")})
+        broadcast(room, lobby_msg(room))
+    elif t == "auto":
+        s.auto = bool(m.get("v"))
+        if room.phase == "lobby":
             broadcast(room, lobby_msg(room))
     elif t == "name" and room.phase == "lobby":
-        b.name = "".join(c for c in str(m.get("v") or "") if c.isprintable())[:14].strip()
+        s.name = clean_name(m.get("v"))
         broadcast(room, lobby_msg(room))
-    elif t == "start" and room.host == b.id and room.phase == "lobby":
+    elif t == "start" and room.host == s.id and room.phase == "lobby":
         start_countdown(room)
 
 
@@ -903,17 +1059,18 @@ async def ws_session(r, w, headers):
                 continue
             if b is None and watcher is None:
                 if t == "hello":
-                    b = new_bee(m.get("name"))
+                    b = new_seat(m.get("name"))
                     b.w = w
-                    mode = m.get("mode")
-                    if mode == "join":
+                    b.dev = str(m.get("dev") or "")[:40]
+                    b.auto = m.get("auto") is not False
+                    if m.get("mode") == "join":
                         room = ROOMS.get(str(m.get("code") or "").strip().upper())
                         if room is None:
                             b.send(F({"t": "err", "msg": "No garden has that code. Check the letters and try again."}))
                             b = None
-                        elif not join(b, room, w):
+                        elif not join(b, room):
                             b = None
-                    elif create(b, w, solo=(mode == "solo")) is None:
+                    elif create(b, m) is None:
                         b = None
                 elif t == "resume":
                     b = resume(w, m.get("code"), str(m.get("key") or ""))
@@ -930,8 +1087,8 @@ async def ws_session(r, w, headers):
                         watcher.send(lobby_msg(room))
                         if room.phase in ("countdown", "play"):
                             watcher.send(F({"t": "go", "in": 0, **world_msg(room)}))
-                        elif room.phase == "results":
-                            watcher.send(F({"t": "end", "rank": room.last_rank}))
+                        elif room.phase == "results" and room.last_end:
+                            watcher.send(F(room.last_end))
                 continue
             if b and b.room:
                 on_control(b, m)

@@ -73,7 +73,7 @@ h1 { font: 700 clamp(36px, 6vw, 84px)/1 "Lora", Georgia, serif; margin: 0; }
 'use strict';
 const $ = id => document.getElementById(id);
 const code = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase();
-let info = new Map(), ws = null;
+let info = new Map(), ws = null, lvl = { of: 1 };
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 if (!/^[A-Z0-9]{6}$/.test(code)) { $("err").style.display = "flex"; $("err").textContent = "Open this page with a garden code, for example /board?code=ABC234"; $("poster").style.display = "none"; }
@@ -98,13 +98,15 @@ function handle(m) {
     }
   } else if (m.t === "go") {
     info = new Map(m.bees.map(b => [b.id, { slot: b.slot, name: b.name }]));
+    lvl = m.level || { of: 1 };
     Garden.setup({ ...m }); Smooth.reset(); $("results").style.display = "none"; live(true);
   } else if (m.t === "s") {
     Smooth.push(m); if (m.fx) Garden.fx(m.fx);
     if (m.toast) { $("toast").textContent = m.toast; $("toast").classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 2800); }
   } else if (m.t === "end") {
-    $("rtitle").textContent = m.rank[0] ? `${m.rank[0].name} wins!` : "Round over";
-    $("rlist").innerHTML = m.rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)} <small style="font-size:.6em;color:#4d6b50">${r.flowers} flowers · biggest patch ${r.patch}</small></span><b>${r.honey}</b></div>`).join("");
+    const lv = m.level || { of: 1 }, multi = lv.of > 1, top = m.rank[0];
+    $("rtitle").textContent = !top ? "Round over" : !multi ? `${top.name} wins!` : m.final ? `${top.name} wins the match!` : `${lv.name} done · next: ${m.next} (${m.nextWorkers} bees each)`;
+    $("rlist").innerHTML = m.rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)} <small style="font-size:.6em;color:#4d6b50">${multi ? r.honey + " this level · " : ""}${r.flowers} flowers · biggest patch ${r.patch}</small></span><b>${multi ? r.total : r.honey}</b></div>`).join("");
     $("results").style.display = "flex";
   }
 }
@@ -120,10 +122,13 @@ function frame(now) {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
     const sideW = $("side").offsetWidth + 24;
     ctx.save(); Garden.draw(ctx, cw - sideW, ch, S, now / 1000, { names: true, dt, allBadges: true }); ctx.restore();
-    const left = S.left ?? 0; $("clock").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");
+    const left = S.left ?? 0; $("clock").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0") + (lvl.of > 1 ? ` · ${lvl.name} ${lvl.idx + 1}/${lvl.of}` : "");
     $("clock").classList.toggle("low", left < 15 && S.ph === "play");
     const stats = Garden.stats(S.o);
-    $("rows").innerHTML = [...S.b].sort((a, b) => b.score - a.score).map((b, i) => { const st = stats.get(b.slot) || { flowers: 0, biggest: 0, rate: 0 }; return `<div><span>${i + 1}</span><i style="background:${PC[b.slot]}"></i><span>${esc(b.name || "")}</span><b>${b.score}</b><small>${st.flowers} flower${st.flowers === 1 ? "" : "s"} · biggest patch ${st.biggest} · +${st.rate}/s</small><span class="hpline"><u style="width:${Math.max(0, b.hp)}%;background:${b.hp > 50 ? "#4fae52" : b.hp > 25 ? "#f0a824" : "#e8504f"}"></u></span></div>`; }).join("");
+    // one row per player; with several bees, the health line is their weakest bee
+    const run = b => b.score + (lvl.of > 1 ? b.total : 0), bySeat = new Map();
+    S.b.forEach(b => { const o = bySeat.get(b.seat); if (!o || b.hp < o.hp) bySeat.set(b.seat, b); });
+    $("rows").innerHTML = [...bySeat.values()].sort((a, b) => run(b) - run(a)).map((b, i) => { const st = stats.get(b.slot) || { flowers: 0, biggest: 0, rate: 0 }; return `<div><span>${i + 1}</span><i style="background:${PC[b.slot]}"></i><span>${esc(b.name || "")}</span><b>${run(b)}</b><small>${st.flowers} flower${st.flowers === 1 ? "" : "s"} · biggest patch ${st.biggest} · +${st.rate}/s</small><span class="hpline"><u style="width:${Math.max(0, b.hp)}%;background:${b.hp > 50 ? "#4fae52" : b.hp > 25 ? "#f0a824" : "#e8504f"}"></u></span></div>`; }).join("");
   }
   requestAnimationFrame(frame);
 }

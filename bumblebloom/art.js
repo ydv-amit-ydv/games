@@ -443,7 +443,7 @@ const Garden = (() => {
     (S.b || []).forEach(b => { if (b.st === 0 && owners[b.f] !== b.slot && b.prog > 0) Art.ring(ctx, world.fl[b.f].x, world.fl[b.f].y, world.fl[b.f].r + 12, PC[b.slot], Math.min(1, b.prog / ((owners[b.f] == null ? 1 : fort.has(b.f) ? fortLoops : 2) * TAU)), 4); });
     // where my bees are going, and where a tap would send them
     const mineIds = new Set(o.mine || (o.me != null ? [o.me] : []));
-    const solo = mineIds.size <= 1;
+    const solo = (o.mineSlots ? new Set(o.mineSlots).size : mineIds.size) <= 1;   // one player here (who may have several bees)
     const beeById = new Map((S.b || []).map(b => [b.id, b]));
     const aimLine = (b, f, col, txt, warnCol) => {
       ctx.save(); ctx.lineCap = "round"; ctx.setLineDash([1, 10]); ctx.lineWidth = 4; ctx.strokeStyle = col;
@@ -512,6 +512,11 @@ const Garden = (() => {
         g2.addColorStop(0, `rgba(255,80,40,${.9 * p})`); g2.addColorStop(1, "rgba(255,80,40,0)");
         ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(-17, 0, 9, 0, TAU); ctx.fill(); ctx.restore();
       }
+      if (o.free && o.free.has(b.id)) {
+        // with several bees: this one is free for your next tap
+        ctx.save(); ctx.globalAlpha = .55 + .35 * Math.sin(t * 4); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, 17, 0, TAU); ctx.stroke(); ctx.restore();
+      }
       Art.bee(ctx, 0, 0, ang, PC[b.slot], t + b.slot, { you: mineIds.has(b.id), dizzy: b.st === 2, faint: b.st === 3, safe: b.safe, hp: b.hp });
       ctx.restore();
       if (o.names && b.name) upright(ctx, b.x, b.y, () => { ctx.font = "800 12px Nunito, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.scale(zoom, zoom); ctx.strokeText(b.name, 0, -24); ctx.fillStyle = "#1e4423"; ctx.fillText(b.name, 0, -24); });
@@ -555,7 +560,7 @@ const Smooth = (() => {
   let buf = [];
   const DELAY = 110;
   function push(m, world) {
-    const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18] }));
+    const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18], seat: a[19], total: a[20] }));
     buf.push({ at: performance.now(), m, bees });
     if (buf.length > 12) buf.shift();
   }

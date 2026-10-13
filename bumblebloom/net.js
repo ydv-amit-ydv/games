@@ -93,7 +93,7 @@ const Net = (() => {
         conn.on("error", () => { if (l) l.close(); });
       });
       peer.on("error", err => {
-        if (err && err.type === "unavailable-id" && host.sim.bees.size <= 1) {
+        if (err && err.type === "unavailable-id" && host.sim.seats.size <= 1) {
           // someone else already has this code: pick another before anyone joins
           peer.destroy(); host.code = host.sim.code = newCode(); listen(Peer);
           host.sim.broadcast(host.sim.lobbyMsg());

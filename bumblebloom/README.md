@@ -177,8 +177,48 @@ and "· fortified" on its label). Stealing one of its flowers takes **3 loops** 
 so big patches are harder to break up, and a sting to clear the defender becomes the way in.
 Bots know this too: they sting rivals in their path and avoid fortified flowers.
 
-### Round
-**2 minutes.** Most honey wins. A match is best of 3 rounds.
+### Auto sting
+A switch on the home screen and in the lobby, **on** by default, and each player sets their own.
+When your sting is ready and you send a bee at a flower with a rival **on the straight line** or
+**circling that flower**, the flight becomes a dash by itself. You can still tap **Sting** by hand.
+New players see the sting doing its job from the very first level, and with several bees to
+manage nobody has to time the button for each one.
+
+### Round and match
+A round lasts **2 minutes** and most honey wins. On the home screen (or in the lobby, for the host)
+choose the match:
+
+| Match | What happens |
+|---|---|
+| **1 round** | One Meadow round, one bee each. |
+| **3 levels** | **Meadow** (1 bee each) → **Orchard** (2 bees each) → **Hive** (3 bees each). Each level grows a bigger garden with more flowers, honey adds up across the three, and the most honey overall wins the match. There is a 10 second results pause between levels. |
+
+### Several bees (Orchard and Hive)
+- **Tap a flower and your nearest free bee flies there.** You don't pick the bee.
+- A bee is **free** once it is circling one of your own flowers (it has finished pollinating),
+  or when it is caught in a web. A free bee has a soft white ring around it.
+- Your card shows the bees as dots, filled when free (`●●○ 2 of 3 bees free`), and a health bar for each.
+- If none is free, the tap does nothing and a small note says *All your bees are busy pollinating*.
+  Tapping a flower one of your bees is already flying to does nothing either, so a double tap never sends two.
+- Your bees pass through each other. Your sting and its cooldown belong to you, not to each bee:
+  one dash, from whichever bee flies next. Fainting drops honey split between your bees
+  (15% ÷ the number of bees each).
+- On a keyboard, **Space** steps a ring through the flowers nearest to one free bee.
+- **Not in two-on-one-screen mode.** Swiping from "your bee" stops making sense when you have
+  three, so a shared screen always plays one round with one bee each. For levels, each player
+  needs their own device.
+
+### Bot bees
+Choose **0–7 bot bees** (0 really means none: you and the garden, for practice) and their skill:
+
+| Skill | Lingers on a flower | Picks | Flytrap | Sting |
+|---|---|---|---|---|
+| **Easy** (default) | 1.6–3.2 s | a random flower 40% of the time | flies through it 1 time in 4 | never |
+| **Normal** | 0.9–1.8 s | random 15% of the time | always goes round | 40% of the time when a rival is in the way |
+| **Hard** | 0.4–1.0 s | always the best flower | always goes round | always when a rival is in the way |
+
+Bots on one team never chase the same flower. A player whose phone drops out keeps playing
+on Normal autopilot until they come back.
 
 ---
 
@@ -187,7 +227,7 @@ Bots know this too: they sting rivals in their path and avoid fortified flowers.
 | Mode | Players | Description |
 |---|---|---|
 | **Garden Trail** (campaign) | 1 | 30 hand-made gardens: pollinate every flower in time, weave through hedge gaps, avoid moving flytraps. 1–3 stars per garden. |
-| **Skirmish** | 1 + bots | You against 1–7 bot bees (Easy / Normal / Sharp). |
+| **Skirmish** | 1 + bots | You against 0–7 bot bees (Easy / Normal / Hard), one round or three levels. |
 | **Free-for-all** | 2–8 | Every bee for itself. Empty seats can be filled with bots. |
 | **Hives** (teams) | 4–8 | 2v2, 2v2v2, 4v4. Teammates' flowers join into one shared patch. |
 
@@ -198,6 +238,11 @@ Bots know this too: they sting rivals in their path and avoid fortified flowers.
 | 3–4 | 14 | medium lawn |
 | 5–6 | 18 | large lawn |
 | 7–8 | 22 | large lawn, camera zooms out a little |
+| up to 12 bees (levels) | 28 | bigger lawn |
+| up to 16 bees | 34 | |
+| up to 24 bees (8 players × 3) | 44 | the largest lawn |
+
+In the Orchard and Hive the garden is sized by the number of **bees**, not players.
 
 ### Garden events (optional, every 30 s)
 - **Butterfly:** flutters across. Catch it for 5 seconds of "sugar rush": you can bump circling bees without stopping.
@@ -242,8 +287,8 @@ so there are no image files to manage.
 | M7 | Polish | Buzzing sounds, petal bursts, colour-blind bee patterns, scaling by player count |
 
 ### Status
-M1–M5 are built (server mode, tap-to-fly, bots, predators, health, phone + big screen, two players on one touch screen). Teams (Hives) are not built yet.
-Still to do: M6 Garden Trail campaign, sound, keyboard sharing for several players on one laptop, a QR code on the big screen.
+M1–M5 are built (server mode and browser mode, tap-to-fly, bots with three skills, predators, health, sting dash and auto sting, fortified patches, three-level matches with up to 3 bees per player, phone + big screen, two players on one touch screen). Teams (Hives) are not built yet.
+Still to do: M6 Garden Trail campaign, sound, a QR code on the big screen, and bringing `visual-guide.html` up to date (it still shows the old hold-to-fly controls).
 
 ---
 
