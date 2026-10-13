@@ -1177,7 +1177,7 @@ PAGES = {"/": "index.html", "/index.html": "index.html", "/admin": "admin.html",
          "/painted.js": "painted.js",
          "/atlas.js": "atlas.js",
          "/qr.js": "qr.js",
-         "/world.js": "world.js", "/sim.js": "sim.js", "/net.js": "net.js",   # browser mode (net.js picks)
+         "/world.js": "world.js", "/sim.js": "sim.js", "/net.js": "net.js", "/relay.js": "relay.js",   # browser mode (net.js picks)
          "/board": "board.html", "/board.html": "board.html"}
 TYPES = {".html": b"text/html; charset=utf-8", ".js": b"application/javascript; charset=utf-8"}
 

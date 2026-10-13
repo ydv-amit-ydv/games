@@ -47,6 +47,17 @@ Things to know:
 - **Your own broker:** add `?broker=host:port` to the address to use a self-run PeerJS server
   (`npx peer --port 9000`) instead of the public one; `?broker=public` switches back.
 
+**No permission prompts: the relay.** Players join through a free public relay (an MQTT broker,
+reached over an ordinary secure WebSocket, the same kind of connection any web page makes). It opens
+no network ports, so neither the browser nor the computer's firewall asks "allow … on public or
+private networks?", and it works on networks that block direct links. A direct browser-to-browser
+link is only tried if no relay answers within a few seconds. Notes:
+- Relays used, in order of preference: `broker.emqx.io`, `broker.hivemq.com`, `test.mosquitto.org`
+  (ports 8084 / 8884 / 8081). `?relay=wss://your-broker/mqtt` uses your own; `?relay=off` turns the relay off.
+- They are public test brokers: anyone who knows the code could read the game's messages (names,
+  positions, scores). Nothing else is sent.
+- The relay suits small groups (up to about 8–10 devices); for a big event use server mode.
+
 **If joining fails**, the message ends with how far it got, for example
 `(helper ✓ · service ✓ · garden ✓ · link no route found)`:
 
@@ -88,7 +99,7 @@ A phone that drops out keeps its bee: autopilot flies it until the phone comes b
 | Setting | Default | |
 |---|---|---|
 | `PORT` | `8000` | port to listen on |
-| `BLOOM_ROUND` | `120` | round length in seconds (server mode) |
+| `BLOOM_ROUND` | `120` | default round length in seconds (server mode); the host can also pick 1, 2, 3 or 5 minutes in the lobby |
 
 You can force browser mode on any host with `?mode=browser`.
 
@@ -210,7 +221,7 @@ New players see the sting doing its job from the very first level, and with seve
 manage nobody has to time the button for each one.
 
 ### Round and match
-A round lasts **2 minutes** and most honey wins. On the home screen (or in the lobby, for the host)
+A round lasts **2 minutes** by default (the host picks 1, 2, 3 or 5 minutes on the home screen or in the lobby; in a 3-level match every level lasts that long) and most honey wins. On the home screen (or in the lobby, for the host)
 choose the match:
 
 | Match | What happens |

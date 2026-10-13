@@ -46,7 +46,8 @@ import asyncio, base64, hashlib, json, math, os, random, socket, string, struct,
 HOST, PORT = "0.0.0.0", int(os.environ.get("PORT", 8000))
 TICK = 1 / 60
 SEND_EVERY = 3                      # state goes out at 20 Hz
-ROUND_SECONDS = int(os.environ.get("BLOOM_ROUND", 120))
+ROUND_SECONDS = int(os.environ.get("BLOOM_ROUND", 120))   # default round length; the host can pick another
+ROUND_CHOICES = (60, 120, 180, 300)
 RESULTS_SECONDS = 15
 BETWEEN_LEVELS = 10                 # the results pause between levels of a match
 COUNTDOWN = 3
@@ -217,6 +218,7 @@ class Room:
         self.shared = False         # two players on one screen: one bee each, always
         self.bots_wanted = 0
         self.skill = "easy"
+        self.secs = ROUND_SECONDS     # length of each round (each level of a match)
         self.match = "single"       # single | levels
         self.level = 0
         self.last_end = None
@@ -317,7 +319,7 @@ def level_info(room):
 def lobby_msg(room):
     humans = [s for s in room.seats.values() if not s.bot]
     return F({"t": "lobby", "code": room.code, "host": room.host, "solo": room.solo, "shared": room.shared,
-              "bots": room.bots_wanted, "skill": room.skill, "match": room.match, "phase": room.phase,
+              "bots": room.bots_wanted, "skill": room.skill, "match": room.match, "secs": room.secs, "phase": room.phase,
               "devices": devices(room), "canLevels": not room.shared,
               "bees": [{"id": s.id, "slot": s.slot, "name": label(s), "bot": s.bot, "away": s.gone is not None,
                         "auto": s.auto} for s in sorted(humans, key=lambda s: s.slot)]})
@@ -332,7 +334,7 @@ def world_msg(room):
             "bees": [{"id": w.id, "slot": w.slot, "name": label(w.seat), "bot": w.seat.bot, "seat": w.seat.id}
                      for w in room.workers],
             "level": level_info(room),
-            "cfg": {"hp": HP_MAX, "secs": ROUND_SECONDS, "flyV": FLY_V, "trapR": TRAP_R + BEE_R,
+            "cfg": {"hp": HP_MAX, "secs": room.secs, "flyV": FLY_V, "trapR": TRAP_R + BEE_R,
                     "stingCd": STING_CD, "fortSize": FORTIFY_SIZE, "fortLoops": FORTIFY_LOOPS}}
 
 
@@ -356,7 +358,7 @@ def state_msg(room, now):
         elif p["k"] == "spider":
             preds.append(["s", p["f"], 0, round(p["age"], 2), round(p["life"], 2)])
     owners = [f["owner"] for f in wd["flowers"]]
-    msg = {"t": "s", "left": round(max(0.0, room.t_end - now), 1) if room.phase == "play" else ROUND_SECONDS,
+    msg = {"t": "s", "left": round(max(0.0, room.t_end - now), 1) if room.phase == "play" else room.secs,
            "ph": room.phase, "b": bees, "o": owners, "p": preds}
     if room.fx:
         msg["fx"] = room.fx
@@ -429,7 +431,7 @@ def start_countdown(room, fresh=True):
 
 def start_play(room, now):
     room.phase = "play"
-    room.t_end = now + ROUND_SECONDS
+    room.t_end = now + room.secs
     room.next_pred = now + PRED_FIRST
 
 
@@ -929,6 +931,8 @@ def apply_settings(room, m):
     v = m.get("bots")
     if type(v) is int:
         room.bots_wanted = max(0, min(MAX_SEATS - 1, v))
+    if m.get("secs") in ROUND_CHOICES:
+        room.secs = m["secs"]
     if m.get("skill") in SKILL:
         room.skill = m["skill"]
     if m.get("match") in ("single", "levels"):
@@ -1008,7 +1012,7 @@ def on_control(s, m):
         fi, wid = m.get("f"), m.get("b")
         if room.phase == "play" and type(fi) is int and 0 <= fi < len(room.world["flowers"]):
             command(room, s, fi, wid if type(wid) is int else None)
-    elif t in ("bots", "skill", "match") and room.host == s.id and room.phase == "lobby":
+    elif t in ("bots", "skill", "match", "secs") and room.host == s.id and room.phase == "lobby":
         apply_settings(room, {t: m.get("v")})
         broadcast(room, lobby_msg(room))
     elif t == "auto":
@@ -1115,7 +1119,7 @@ async def ws_session(r, w, headers):
 
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/board": "board.html", "/board.html": "board.html",
-         "/art.js": "art.js", "/sim.js": "sim.js", "/net.js": "net.js",
+         "/art.js": "art.js", "/sim.js": "sim.js", "/net.js": "net.js", "/relay.js": "relay.js",
          "/guide": "visual-guide.html", "/visual-guide.html": "visual-guide.html"}
 TYPES = {".html": b"text/html; charset=utf-8", ".js": b"application/javascript; charset=utf-8"}
 

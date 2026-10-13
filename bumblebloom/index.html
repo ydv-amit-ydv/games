@@ -107,6 +107,7 @@ input:focus { outline: none; border-color: #5fbb56; }
 #helpbtn { pointer-events: auto; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.16); font: 800 1.2rem var(--f-body); color: var(--ink); cursor: pointer; }
 #help { position: absolute; left: 12px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); width: min(330px, calc(100vw - 24px)); display: none; gap: 8px; pointer-events: auto; }
 #help.on { display: grid; }
+#help { max-height: calc(100vh - 190px); overflow-y: auto; overscroll-behavior: contain; }
 #help h3 { margin: 0; font: 700 1.05rem var(--f-display); }
 #help p { margin: 0; font-size: .86rem; color: var(--muted); }
 #help table { border-collapse: collapse; font-size: .86rem; width: 100%; }
@@ -176,6 +177,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
       <div class="stepper"><span>Bot bees<small id="hbotsnote">0 means no bots</small></span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="hbminus" aria-label="Fewer bots">−</button><b id="hbots">2</b><button type="button" id="hbplus" aria-label="More bots">+</button></div></div>
       <div class="seg" id="hskill" role="group" aria-label="Bot skill"><span>Bot skill</span><button type="button" data-v="easy">Easy</button><button type="button" data-v="normal">Normal</button><button type="button" data-v="hard">Hard</button></div>
       <div class="seg" id="hmatch" role="group" aria-label="Match length"><span>Match<small>3 levels: more bees each level</small></span><button type="button" data-v="single">1 round</button><button type="button" data-v="levels">3 levels</button></div>
+<div class="seg" id="hsecs" role="group" aria-label="Round length"><span>Round<small>each level lasts this long</small></span><button type="button" data-v="60">1 min</button><button type="button" data-v="120">2</button><button type="button" data-v="180">3</button><button type="button" data-v="300">5</button></div>
       <div class="seg"><span>Auto sting<small>a flight at a rival becomes a dash by itself</small></span><button type="button" id="hauto" aria-pressed="true">On</button></div>
     </div>
     <button class="btn honey" id="solo" type="button">Play solo against bot bees</button>
@@ -200,6 +202,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
       <div class="stepper"><span>Bot bees<small>0 means no bots</small></span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="bminus" aria-label="Fewer bots">−</button><b id="bots">0</b><button type="button" id="bplus" aria-label="More bots">+</button></div></div>
       <div class="seg" id="lskill" role="group" aria-label="Bot skill"><span>Bot skill</span><button type="button" data-v="easy">Easy</button><button type="button" data-v="normal">Normal</button><button type="button" data-v="hard">Hard</button></div>
       <div class="seg" id="lmatch" role="group" aria-label="Match length"><span>Match</span><button type="button" data-v="single">1 round</button><button type="button" data-v="levels">3 levels</button></div>
+      <div class="seg" id="lsecs" role="group" aria-label="Round length"><span>Round<small>each level lasts this long</small></span><button type="button" data-v="60">1 min</button><button type="button" data-v="120">2</button><button type="button" data-v="180">3</button><button type="button" data-v="300">5</button></div>
     </div>
     <p class="small" id="lset" style="text-align:center"></p>
     <p class="lvls" id="llvls" style="display:none"><b>3 levels:</b> Meadow (1 bee each) → Orchard (2 bees) → Hive (3 bees), each a bigger garden. Honey adds up across the levels. With several bees, a bee is <b>free</b> once it is circling one of your own flowers: tap a flower and your nearest free bee goes.</p>
@@ -238,9 +241,10 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
   <div id="results"><div class="sign"><h2 id="rtitle">Round over</h2><div class="rank" id="rlist"></div><p class="small" id="rnext" style="text-align:center">Back to the lobby in a moment…</p></div></div>
 </section>
 
-<script src="art.js?v=7"></script>
-<script src="sim.js?v=7"></script>
-<script src="net.js?v=7"></script>
+<script src="art.js?v=8"></script>
+<script src="sim.js?v=8"></script>
+<script src="relay.js?v=8"></script>
+<script src="net.js?v=8"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -258,23 +262,26 @@ const DEV = (() => { const r = () => Math.random().toString(36).slice(2, 10); tr
 // home-screen choices, remembered on this device
 const num = (v, d) => v == null || v === "" || isNaN(+v) ? d : +v;
 const opts = { bots: Math.max(0, Math.min(7, num(store.get("bb-bots"), 2))), skill: store.get("bb-skill") || "easy",
-  match: store.get("bb-match") === "levels" ? "levels" : "single", auto: store.get("bb-auto") !== "0" };
+  match: store.get("bb-match") === "levels" ? "levels" : "single", auto: store.get("bb-auto") !== "0",
+  secs: [60, 120, 180, 300].includes(num(store.get("bb-secs"), 120)) ? num(store.get("bb-secs"), 120) : 120 };
+const mins = s => s % 60 ? (s / 60).toFixed(1) + " min" : s / 60 + " min";
 const SKILLS = { easy: "Easy", normal: "Normal", hard: "Hard" };
 if (!SKILLS[opts.skill]) opts.skill = "easy";
-function segPaint(id, v) { $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); }
+function segPaint(id, v) { $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v))); }
 function togPaint(id, on) { $(id).setAttribute("aria-pressed", on ? "true" : "false"); $(id).textContent = on ? "On" : "Off"; }
 function paintOpts() {
   $("hbots").textContent = opts.bots; $("hbotsnote").textContent = opts.bots ? "bot bees in solo and new gardens" : "no bots: just you and the garden";
-  segPaint("hskill", opts.skill); segPaint("hmatch", opts.match); togPaint("hauto", opts.auto);
+  segPaint("hskill", opts.skill); segPaint("hmatch", opts.match); segPaint("hsecs", opts.secs); togPaint("hauto", opts.auto);
   $("hskill").style.opacity = opts.bots ? 1 : .5;
   $("solo").textContent = opts.bots ? `Play solo against ${opts.bots} bot bee${opts.bots > 1 ? "s" : ""}` : "Play solo (no bots: practise)";
 }
-function saveOpts() { store.set("bb-bots", opts.bots); store.set("bb-skill", opts.skill); store.set("bb-match", opts.match); store.set("bb-auto", opts.auto ? "1" : "0"); paintOpts(); }
+function saveOpts() { store.set("bb-bots", opts.bots); store.set("bb-skill", opts.skill); store.set("bb-match", opts.match); store.set("bb-auto", opts.auto ? "1" : "0"); store.set("bb-secs", opts.secs); paintOpts(); }
 $("hbminus").onclick = () => { opts.bots = Math.max(0, opts.bots - 1); saveOpts(); };
 $("hbplus").onclick = () => { opts.bots = Math.min(7, opts.bots + 1); saveOpts(); };
 $("hskill").addEventListener("click", e => { const v = e.target.dataset.v; if (v) { opts.skill = v; saveOpts(); } });
 $("hmatch").addEventListener("click", e => { const v = e.target.dataset.v; if (v) { opts.match = v; saveOpts(); } });
 $("hauto").onclick = () => { opts.auto = !opts.auto; saveOpts(); };
+$("hsecs").addEventListener("click", e => { const v = +e.target.dataset.v; if (v) { opts.secs = v; saveOpts(); } });
 paintOpts();
 // two players can share a touch screen; a mouse or keyboard is one player
 if (matchMedia("(pointer: coarse)").matches) $("duo").style.display = "grid";
@@ -314,7 +321,7 @@ async function start(mode, count = 1) {
   seats = [first];
   // two on one screen: one bee each, one round (the server enforces it too)
   openSeat(first, { t: "hello", mode, name, code, dev: DEV, auto: opts.auto, bots: opts.bots, skill: opts.skill,
-    match: count > 1 ? "single" : opts.match, shared: count > 1 });
+    match: count > 1 ? "single" : opts.match, shared: count > 1, secs: opts.secs });
 }
 // once the first seat has a garden, the friends on this device join it
 function addFriends(code, n) {
@@ -333,6 +340,7 @@ $("bminus").onclick = () => send(seats[0], { t: "bots", v: Math.max(0, (lobby?.b
 $("bplus").onclick = () => send(seats[0], { t: "bots", v: Math.min(7, (lobby?.bots || 0) + 1) });
 $("lskill").addEventListener("click", e => { const v = e.target.dataset.v; if (v) send(seats[0], { t: "skill", v }); });
 $("lmatch").addEventListener("click", e => { const v = e.target.dataset.v; if (v) send(seats[0], { t: "match", v }); });
+$("lsecs").addEventListener("click", e => { const v = +e.target.dataset.v; if (v) send(seats[0], { t: "secs", v }); });
 $("lauto").onclick = () => { opts.auto = !opts.auto; saveOpts(); seats.forEach(s => send(s, { t: "auto", v: opts.auto })); togPaint("lauto", opts.auto); };
 $("start").onclick = () => send(seats[0], { t: "start" });
 $("helpbtn").onclick = () => $("help").classList.toggle("on");
@@ -417,13 +425,13 @@ function renderLobby() {
   while (cells.length < 2) cells.push(`<div class="chip empty"><span>waiting for a bee…</span></div>`);
   $("lbees").innerHTML = cells.join("");
   $("bots").textContent = lobby.bots;
-  segPaint("lskill", lobby.skill); segPaint("lmatch", lobby.match);
+  segPaint("lskill", lobby.skill); segPaint("lmatch", lobby.match); segPaint("lsecs", lobby.secs);
   $("lskill").style.opacity = lobby.bots ? 1 : .5;
   $("lmatch").style.display = lobby.canLevels ? "flex" : "none";
   const levels = lobby.match === "levels";
   $("llvls").style.display = levels ? "block" : "none";
   $("lset").textContent = (lobby.bots ? `${lobby.bots} ${(SKILLS[lobby.skill] || "").toLowerCase()} bot bee${lobby.bots > 1 ? "s" : ""}` : "No bots")
-    + " · " + (levels ? "3 levels" : "1 round") + (lobby.shared ? " · two on one screen: one bee each" : "");
+    + " · " + (levels ? "3 levels" : "1 round") + (lobby.secs ? ` of ${mins(lobby.secs)}` + (levels ? " each" : "") : "") + (lobby.shared ? " · two on one screen: one bee each" : "");
   const mine = lobby.bees.find(b => b.id === (seats[0] && seats[0].id));
   togPaint("lauto", mine ? mine.auto !== false : opts.auto);
   $("hostbox").style.display = isHost ? "grid" : "none";

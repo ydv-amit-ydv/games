@@ -18,7 +18,7 @@
 
 const Net = (() => {
   const PEERJS = ["https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js", "https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"];
-  const PREFIX = "last-garden-tournament-";
+  const PREFIX = "last-garden-tournament-", RELAY_PREFIX = "lastgarden/v1";
   const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // as the server: no 0 O 1 I L
   let mode = null, host = null, peerLib = null;
   // ?broker=host:port uses a self-run PeerJS server instead of the public one
@@ -31,12 +31,11 @@ const Net = (() => {
   // every network lets through. Your own relay: ?turn=turns:host:443|user|password
   // (remembered on this device; ?turn=none forgets it).
   const TURN = (() => { try { const q = new URLSearchParams(location.search).get("turn"); if (q) localStorage.setItem("peer-turn", q === "none" ? "" : q); return localStorage.getItem("peer-turn") || ""; } catch (e) { return ""; } })();
+  // five servers at most: Firefox slows right down with more
   const ICE = [
-    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
-    { urls: "stun:stun.cloudflare.com:3478" },
-    { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" },
-    { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp", "turns:openrelay.metered.ca:443?transport=tcp"],
-      username: "openrelayproject", credential: "openrelayproject" },
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"] },
+    { urls: "turn:eu-0.turn.peerjs.com:3478", username: "peerjs", credential: "peerjsp" },
+    { urls: ["turn:openrelay.metered.ca:443?transport=tcp", "turns:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject" },
   ];
   if (TURN) { const [u, user, cred] = TURN.split("|"); ICE.unshift({ urls: u.split(","), username: user || "", credential: cred || "" }); }
   function peerOpts() {
@@ -88,7 +87,7 @@ const Net = (() => {
   // browser to browser. A code that has been online is never changed, since
   // people may already have it.
   function becomeHost(practice) {
-    if (host) { clearInterval(host.keep); host.sim.stop(); if (host.peer) host.peer.destroy(); }
+    if (host) { clearInterval(host.keep); host.sim.stop(); if (host.peer) host.peer.destroy(); if (host.relay) host.relay.close(); }
     const h = host = { code: newCode(), sim: new GardenSim.Host(), peer: null, online: false, wasOnline: false, Peer: null, waiting: false, keep: 0 };
     if (practice) return h;
     const listen = () => {
@@ -114,7 +113,7 @@ const Net = (() => {
         peer.destroy();
         if (h.sim.room && h.sim.room.players.size <= 1) {
           // someone else already holds this code and nobody has seen ours yet: take another
-          h.code = newCode(); h.sim.room.code = h.code; listen();
+          h.code = newCode(); h.sim.room.code = h.code; listen(); if (h.relay) h.relay.retopic();
         } else { h.waiting = true; setTimeout(() => { h.waiting = false; listen(); }, 3000); }
       });
     };
@@ -126,6 +125,9 @@ const Net = (() => {
     };
     h.keep = setInterval(check, 3000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+    // the relay: runners whose network or browser will not do a direct link come in this way
+    if (typeof Relay !== "undefined" && Relay.urls.length)
+      h.relay = Relay.host({ prefix: RELAY_PREFIX, code: () => h.code, connect: link => h.sim.connect(link, h.code) });
     loadPeer().then(P => { h.Peer = P; listen(); }, () => {});
     return h;
   }
@@ -141,43 +143,61 @@ const Net = (() => {
   // A seat in a tournament hosted by another browser. "Not found" often only
   // means the host's phone is asleep for a moment, so keep looking for a while.
   const LOOK_FOR = 30000;
-  function remote(code, deliver, closed, first) {
+  function remote(code, deliver, closed, first, claim) {
     let peer = null, conn = null, done = false, opened = false, found = false, retry = 0, fails = 0;
     const t0 = Date.now();
     // how far the join got, for the message if it fails
-    const step = { lib: false, broker: false, host: false, ice: "" };
-    const details = () => `(helper ${step.lib ? "✓" : "✗"} · service ${step.broker ? "✓" : "✗"} · tournament ${step.host ? "✓" : "✗"} · link ${({ "": "✗", new: "no route found", checking: "still trying", failed: "blocked", disconnected: "dropped" })[step.ice] || step.ice})`;
+    const step = { lib: false, broker: false, host: false, ice: "", routes: "" };
+    const details = () => `(helper ${step.lib ? "✓" : "✗"} · service ${step.broker ? "✓" : "✗"} · tournament ${step.host ? "✓" : "✗"} · link ${({ "": "✗", new: "no route found", checking: "still trying", failed: "blocked", disconnected: "dropped" })[step.ice] || step.ice}${step.routes ? " · routes: " + step.routes : ""})`;
     const api = {
       send: o => { if (conn && conn.open) conn.send(o); },
-      close: () => { if (done) return; done = true; clearTimeout(retry); clearTimeout(timer); try { conn && conn.close(); } catch (e) {} try { peer && peer.destroy(); } catch (e) {} closed(); },
+      close: () => { if (done) return; done = true; clearTimeout(retry); clearTimeout(timer); try { conn && conn.close(); } catch (e) {} try { peer && peer.destroy(); } catch (e) {} closed && closed(); },
+      quiet: () => { const cb = closed; closed = null; api.close(); closed = cb; },   // the relay won: leave without a word
     };
     const fail = msg => { if (done) return; deliver({ t: "err", msg }); api.close(); };
     const wait = msg => { if (!done && !opened) deliver({ t: "netwait", msg }); };
     const giveUp = () => {
-      if (opened) return;
-      fail(found ? `Found the tournament but the two browsers could not link up: one of the networks blocks it. Try the same Wi-Fi for everyone, or mobile data. ${details()}`
+      if (opened || done) return;
+      const report = () => fail(found ? `Found the tournament but the two browsers could not link up: one of the networks blocks it. Try the same Wi-Fi for everyone, or mobile data. ${details()}`
                  : `No tournament with the code ${code} is open right now. Check the letters, and that the host has it open and in front. ${details()}`);
+      // which kinds of route this browser found: host = its own network, srflx = via STUN, relay = via TURN
+      const pc = conn && conn.peerConnection;
+      if (!pc || !pc.getStats) return report();
+      const late = setTimeout(report, 1500);
+      pc.getStats().then(stats => {
+        const kinds = new Set(); stats.forEach(r => { if (r.type === "local-candidate" && r.candidateType) kinds.add(r.candidateType); });
+        step.routes = [...kinds].join(", ") || "none";
+        clearTimeout(late); report();
+      }, () => {});
     };
-    const timer = setTimeout(giveUp, LOOK_FOR);
+    // 30 s to find the host; once it has answered, the link itself gets up to 30 s more
+    const LINK_FOR = 30000, RANK = { "": 0, new: 1, checking: 2, disconnected: 2, failed: 2, connected: 3, completed: 3, closed: 0 };
+    let timer = setTimeout(giveUp, LOOK_FOR);
     const dial = () => {
       if (done || opened || !peer || peer.destroyed) return;
       if (peer.disconnected) { try { peer.reconnect(); } catch (e) {} retry = setTimeout(dial, 2000); return; }
       try { conn && conn.close(); } catch (e) {}
       const c = conn = peer.connect(PREFIX + code, { serialization: "json", reliable: true });
-      c.on("open", () => { if (c !== conn) return; opened = true; clearTimeout(timer); clearTimeout(retry); c.send(first); });
+      let answered = false;
+      c.on("open", () => { if (c !== conn) return; if (claim && !claim("rtc")) { api.quiet(); return; } opened = true; clearTimeout(timer); clearTimeout(retry); c.send(first); });
       c.on("data", d => { if (c === conn) deliver(d); });
       c.on("close", () => { if (c === conn && opened) api.close(); });
       c.on("error", () => {});
-      // watch the browser-to-browser link: anything past "new" means the host answered
+      // watch the link without interrupting it: on a real network it can take several seconds
       const watch = setInterval(() => {
         if (c !== conn || done || opened) { clearInterval(watch); return; }
         const pc = c.peerConnection; if (!pc) return;
-        step.ice = pc.iceConnectionState;
-        if (pc.remoteDescription || step.ice !== "new") { step.host = true; found = true; }   // the host answered
-        if (step.ice === "failed") { clearInterval(watch); fails++; if (fails >= 2) giveUp(); else { clearTimeout(retry); dial(); } }
+        const st = pc.iceConnectionState;
+        if ((RANK[st] || 0) >= (RANK[step.ice] || 0)) step.ice = st;          // keep the furthest it got
+        if (!answered && pc.remoteDescription) {
+          answered = step.host = found = true;
+          clearTimeout(timer); timer = setTimeout(giveUp, LINK_FOR);
+          wait(`Found tournament ${code}, linking up…`);
+        }
+        if (st === "failed") { clearInterval(watch); if (++fails >= 2) giveUp(); else dial(); }
       }, 500);
-      // the host answered on the broker but the browsers have not linked yet: give it time, then dial again
-      retry = setTimeout(() => { if (!opened) { found = true; wait(`Connecting to tournament ${code}…`); dial(); } }, 9000);
+      // no answer from the host at all (an offer can get lost): ask again
+      retry = setTimeout(() => { if (!opened && !answered) dial(); }, 8000);
     };
     loadPeer().then(Peer => {
       if (done) return;
@@ -199,6 +219,35 @@ const Net = (() => {
       });
     }, () => fail("Could not load the connection helper. Are you online?"));
     return api;
+  }
+
+  // Another browser's tournament: through the relay first (no ports opened, so
+  // no firewall or browser prompts), and the direct link too if the relay has
+  // not found it within a few seconds. Whichever reaches the host first is used;
+  // the other is dropped before it takes a seat.
+  function guest(code, deliver, closed, first) {
+    let route = null, relay = null, rtc = null, ended = false;
+    const claim = who => {
+      if (route) return route === who;
+      route = who;
+      if (who === "relay" && rtc) rtc.quiet();
+      if (who === "rtc" && relay) relay.quiet();
+      return true;
+    };
+    const end = () => { if (ended) return; ended = true; closed(); };
+    const direct = () => {
+      if (rtc || route || ended) return;
+      rtc = remote(code, m => { if (route !== "relay" && !ended) deliver(m); }, () => { if (route !== "relay") { if (relay) relay.quiet(); end(); } }, first, claim);
+    };
+    if (typeof Relay !== "undefined" && Relay.urls.length) {
+      relay = Relay.guest({ prefix: RELAY_PREFIX, code, first, claim, onNoRelay: direct,
+        deliver: m => { if (route === "relay" && !ended) deliver(m); }, closed: () => { if (route === "relay") end(); } });
+      setTimeout(direct, 6000);
+    } else direct();
+    return {
+      send: o => { if (route === "relay") relay.send(o); else if (rtc) rtc.send(o); },
+      close: () => { if (ended) return; if (relay) (route === "relay" ? relay.close() : relay.quiet()); if (rtc) rtc.close(); end(); },
+    };
   }
 
   // Looks like a WebSocket to the page. The first message decides where it goes.
@@ -225,12 +274,12 @@ const Net = (() => {
       const code = String(o.code || "").trim().toUpperCase();
       if (o.t === "hi" && (o.mode === "create" || o.mode === "practice")) { becomeHost(o.mode === "practice"); route = local(deliver, closed); }
       else if (host && host.code === code) route = local(deliver, closed);
-      else { route = remote(code, deliver, closed, o); return; }
+      else { route = guest(code, deliver, closed, o); return; }
       route.send(o);
     };
     s.close = () => { if (ws) ws.close(); else if (route) route.close(); else closed(); };
     return s;
   }
 
-  return { ready, socket, _host: () => host, get mode() { return mode; }, get hosting() { return host ? { code: host.code, online: host.online, practice: !host.peer } : null; } };
+  return { ready, socket, _host: () => host, get mode() { return mode; }, get hosting() { return host ? { code: host.code, online: host.online || !!(host.relay && host.relay.up), practice: !host.peer && !host.relay } : null; } };
 })();

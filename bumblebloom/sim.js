@@ -16,7 +16,7 @@
 
 const BloomSim = (() => {
   const TICK = 1 / 60, SEND_EVERY = 3;
-  const ROUND_SECONDS = 120, RESULTS_SECONDS = 15, BETWEEN_LEVELS = 10, COUNTDOWN = 3, MAX_SEATS = 8, RESUME_GRACE = 120;
+  const ROUND_SECONDS = 120, ROUND_CHOICES = [60, 120, 180, 300], RESULTS_SECONDS = 15, BETWEEN_LEVELS = 10, COUNTDOWN = 3, MAX_SEATS = 8, RESUME_GRACE = 120;
   const NAMES = ["Red", "Blue", "Gold", "Violet", "Orange", "Pink", "Teal", "Brown"];
   // levels: how many bees each player commands
   const LEVELS = [{ name: "Meadow", workers: 1 }, { name: "Orchard", workers: 2 }, { name: "Hive", workers: 3 }];
@@ -77,7 +77,7 @@ const BloomSim = (() => {
       this.code = code; this.seats = new Map(); this.workers = []; this.watchers = new Set(); this.host = null; this.phase = "lobby";
       this.world = null; this.preds = []; this.fxq = []; this.toast = null; this.tEnd = 0; this.tPhase = 0; this.nextPred = 0;
       this.predId = 0; this.tickN = 0; this.fort = new Set(); this.solo = false; this.shared = false;
-      this.botsWanted = 0; this.skill = "easy"; this.match = "single"; this.level = 0; this.lastEnd = null; this.nextId = 1;
+      this.botsWanted = 0; this.skill = "easy"; this.secs = ROUND_SECONDS; this.match = "single"; this.level = 0; this.lastEnd = null; this.nextId = 1;
       let last = performance.now() / 1000, acc = 0;
       this.timer = setInterval(() => {
         const now = performance.now() / 1000; acc += Math.min(.25, now - last); last = now;
@@ -111,7 +111,7 @@ const BloomSim = (() => {
       return { idx: this.level, name: lv.name, workers: lv.workers, of: this.match === "levels" ? LEVELS.length : 1, match: this.match };
     }
     lobbyMsg() {
-      return { t: "lobby", code: this.code, host: this.host, solo: this.solo, shared: this.shared, bots: this.botsWanted, skill: this.skill,
+      return { t: "lobby", code: this.code, host: this.host, solo: this.solo, shared: this.shared, bots: this.botsWanted, skill: this.skill, secs: this.secs,
         match: this.match, phase: this.phase, devices: this.devices(), canLevels: !this.shared,
         bees: this.sorted().filter(s => !s.bot).map(s => ({ id: s.id, slot: s.slot, name: this.label(s), bot: s.bot, away: s.gone != null, auto: s.auto })) };
     }
@@ -121,11 +121,11 @@ const BloomSim = (() => {
         seats: this.sorted().map(s => ({ id: s.id, slot: s.slot, name: this.label(s), bot: s.bot })),
         bees: this.workers.map(w => ({ id: w.id, slot: w.slot, name: this.label(w.seat), bot: w.seat.bot, seat: w.seat.id })),
         level: this.levelInfo(),
-        cfg: { hp: HP_MAX, secs: ROUND_SECONDS, flyV: FLY_V, trapR: TRAP_R + BEE_R, stingCd: STING_CD, fortSize: FORTIFY_SIZE, fortLoops: FORTIFY_LOOPS } };
+        cfg: { hp: HP_MAX, secs: this.secs, flyV: FLY_V, trapR: TRAP_R + BEE_R, stingCd: STING_CD, fortSize: FORTIFY_SIZE, fortLoops: FORTIFY_LOOPS } };
     }
     stateMsg(now) {
       const st = { orbit: 0, fly: 1, dizzy: 2, faint: 3 };
-      const msg = { t: "s", left: this.phase === "play" ? r1(Math.max(0, this.tEnd - now)) : ROUND_SECONDS, ph: this.phase,
+      const msg = { t: "s", left: this.phase === "play" ? r1(Math.max(0, this.tEnd - now)) : this.secs, ph: this.phase,
         b: this.workers.map(w => { const s = w.seat; return [w.id, r1(w.x), r1(w.y), r3(w.ang), st[w.state], Math.round(w.hp), Math.floor(s.score), r2(w.prog), w.f, w.dir, r1(w.rad), r1(w.vx), r1(w.vy), w.safe > 0 ? 1 : 0, r2(w.v), w.target == null || w.state !== "fly" ? -1 : w.target, w.sting ? 1 : 0, s.stingArmed ? 1 : 0, r1(w.stingCd), s.id, Math.floor(s.total)]; }),
         o: this.world.flowers.map(f => f.owner),
         p: this.preds.map(p => p.k === "dragon" ? ["d", Math.round(p.x), Math.round(p.y), r2(Math.atan2(p.vy, p.vx)), p.id]
@@ -172,7 +172,7 @@ const BloomSim = (() => {
       this.broadcast(this.lobbyMsg());
       this.broadcast({ t: "go", in: COUNTDOWN, ...this.worldMsg() });
     }
-    startPlay(now) { this.phase = "play"; this.tEnd = now + ROUND_SECONDS; this.nextPred = now + PRED_FIRST; }
+    startPlay(now) { this.phase = "play"; this.tEnd = now + this.secs; this.nextPred = now + PRED_FIRST; }
     endRound(now) {
       this.seats.forEach(s => { s.total += s.score; });
       const more = this.match === "levels" && this.level < LEVELS.length - 1;
@@ -453,6 +453,7 @@ const BloomSim = (() => {
     // ---- joining (same messages as server.py)
     applySettings(m) {
       if (Number.isInteger(m.bots)) this.botsWanted = Math.max(0, Math.min(MAX_SEATS - 1, m.bots));
+      if (ROUND_CHOICES.includes(m.secs)) this.secs = m.secs;
       if (SKILL[m.skill]) this.skill = m.skill;
       if (m.match === "single" || m.match === "levels") this.match = this.shared ? "single" : m.match;
     }
@@ -488,7 +489,7 @@ const BloomSim = (() => {
     control(s, m) {
       if (m.t === "sting") { if (this.phase === "play") this.armSting(s); }
       else if (m.t === "to") { const fi = m.f; if (this.phase === "play" && Number.isInteger(fi) && fi >= 0 && fi < this.world.flowers.length) this.command(s, fi, Number.isInteger(m.b) ? m.b : null); }
-      else if ((m.t === "bots" || m.t === "skill" || m.t === "match") && this.host === s.id && this.phase === "lobby") { this.applySettings({ [m.t]: m.v }); this.broadcast(this.lobbyMsg()); }
+      else if ((m.t === "bots" || m.t === "skill" || m.t === "match" || m.t === "secs") && this.host === s.id && this.phase === "lobby") { this.applySettings({ [m.t]: m.v }); this.broadcast(this.lobbyMsg()); }
       else if (m.t === "auto") { s.auto = !!m.v; if (this.phase === "lobby") this.broadcast(this.lobbyMsg()); }
       else if (m.t === "name" && this.phase === "lobby") { s.name = clean(m.v); this.broadcast(this.lobbyMsg()); }
       else if (m.t === "start" && this.host === s.id && this.phase === "lobby") this.startCountdown();

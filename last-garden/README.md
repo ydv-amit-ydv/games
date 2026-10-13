@@ -63,6 +63,17 @@ trying for 30 seconds). Codes ignore spaces, dashes and lower case, and never us
 To use a self-run PeerJS server instead of the public one, add `?broker=host:port` to the address
 (`npx peer --port 9000`); `?broker=public` switches back.
 
+**No permission prompts: the relay.** Players join through a free public relay (an MQTT broker,
+reached over an ordinary secure WebSocket, the same kind of connection any web page makes). It opens
+no network ports, so neither the browser nor the computer's firewall asks "allow … on public or
+private networks?", and it works on networks that block direct links. A direct browser-to-browser
+link is only tried if no relay answers within a few seconds. Notes:
+- Relays used, in order of preference: `broker.emqx.io`, `broker.hivemq.com`, `test.mosquitto.org`
+  (ports 8084 / 8884 / 8081). `?relay=wss://your-broker/mqtt` uses your own; `?relay=off` turns the relay off.
+- They are public test brokers: anyone who knows the code could read the tournament's messages (names,
+  positions, gold). Nothing else is sent.
+- The relay suits small groups (up to about 8–10 devices); for a big event use server mode.
+
 **If joining fails**, the message ends with how far it got, for example
 `(helper ✓ · service ✓ · garden ✓ · link no route found)`:
 

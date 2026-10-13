@@ -574,17 +574,20 @@ const Garden = (() => {
 
 /* Network snapshots arrive 20 times a second; this smooths them out. */
 const Smooth = (() => {
-  let buf = [];
-  const DELAY = 110;
+  let buf = [], gap = 50;
+  // play this far behind the newest snapshot: 110 ms at 20 a second, more when they come slower (the relay sends 10)
+  const delay = () => Math.max(110, Math.min(400, gap * 2.2));
   function push(m, world) {
     const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18], seat: a[19], total: a[20] }));
-    buf.push({ at: performance.now(), m, bees });
+    const at = performance.now();
+    if (buf.length) gap += (Math.min(500, at - buf[buf.length - 1].at) - gap) * .1;
+    buf.push({ at, m, bees });
     if (buf.length > 12) buf.shift();
   }
   function reset() { buf = []; }
   function sample(world, info) {
     if (!buf.length) return null;
-    const now = performance.now() - DELAY;
+    const now = performance.now() - delay();
     let i = buf.length - 1;
     while (i > 0 && buf[i - 1].at > now) i--;
     const b1 = buf[i], b0 = buf[Math.max(0, i - 1)];
