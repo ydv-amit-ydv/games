@@ -104,15 +104,17 @@ input:focus { outline: none; border-color: #5fbb56; }
 /* ---------- several players on one device ---------- */
 kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; background: #fff; color: var(--ink); }
 #edges { position: absolute; inset: 0; pointer-events: none; }
-.edge { position: absolute; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-  width: min(44vw, 210px); min-height: 92px; border-radius: 22px; border: 4px solid var(--c); background: rgba(255,255,255,.94);
-  box-shadow: 0 6px 0 var(--c), 0 10px 24px rgba(0,0,0,.22); display: grid; gap: 4px; align-content: center; padding: 10px 14px; text-align: left; font-family: var(--f-body); color: var(--ink); cursor: pointer; }
-.edge.down { box-shadow: 0 2px 0 var(--c), 0 6px 16px rgba(0,0,0,.2); background: var(--tint); margin-top: 4px; }
-.edge .nm { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: .95rem; }
-.edge .act { font-weight: 800; font-size: 1.05rem; color: var(--c); filter: brightness(.8); }
+.edge { position: absolute; pointer-events: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  width: min(48vw, 220px); border-radius: 16px; border: 3px solid var(--c); background: rgba(255,255,255,.94);
+  box-shadow: 0 4px 0 var(--c), 0 8px 18px rgba(0,0,0,.2); display: grid; gap: 2px; align-content: center; padding: 6px 10px; text-align: left; font-family: var(--f-body); color: var(--ink); }
+.edge.down { background: var(--tint); }
+.edge .note { font-size: .68rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 800; color: #6f4e12; background: #fff7e0; border-radius: 8px; padding: 3px 7px; line-height: 1.25; }
+.edge .note:not(.on) { display: none; }
+.edge .nm { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: .85rem; }
+.edge .act { font-weight: 800; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c); filter: brightness(.8); }
 .edge .hp { height: 7px; }
-.edge .st { font-size: .78rem; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
-#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #hint, #game.local #stingbtn { display: none; }
+.edge .st { font-size: .72rem; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #hint, #game.local #stingbtn, #game.local #toast { display: none; }
 #stingbtn { position: absolute; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); min-width: 118px; min-height: 52px; border: 0; border-radius: 999px;
   font: 800 .95rem var(--f-body); color: #fff; background: linear-gradient(180deg, #ff7a45, #d9411e); box-shadow: 0 5px 0 #9c2a10, 0 8px 20px rgba(0,0,0,.25);
   cursor: pointer; padding: 0 18px; touch-action: manipulation; }
@@ -122,7 +124,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
 @keyframes stingPulse { to { transform: scale(1.05); } }
 @media (prefers-reduced-motion: reduce) { #stingbtn.armed { animation: none; } }
 @media (max-width: 640px) { #hint { left: 14px; transform: none; max-width: calc(100vw - 160px); white-space: normal; border-radius: 16px; } }
-.edge .stg { justify-self: start; border: 0; border-radius: 999px; padding: 6px 12px; min-height: 34px; font: 800 .8rem var(--f-body); color: #fff; background: linear-gradient(180deg, #ff7a45, #d9411e); cursor: pointer; }
+.edge .stg { pointer-events: auto; justify-self: start; border: 0; border-radius: 999px; padding: 4px 12px; min-height: 30px; font: 800 .74rem var(--f-body); color: #fff; background: linear-gradient(180deg, #ff7a45, #d9411e); cursor: pointer; }
 .edge .stg.armed { background: linear-gradient(180deg, #ffd25c, #f08a24); color: #4a2a08; }
 .edge .stg.wait { background: #b8aaa2; }
 #game.local .hud { justify-content: center; }
@@ -155,7 +157,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <div id="duo" style="display:none;gap:10px">
       <div class="or">or two players on this phone or tablet</div>
       <button class="btn go" id="together" type="button">Play two on this screen</button>
-      <p class="small">Each player gets a button at their end of the screen: drag it onto a flower to fly there.</p>
+      <p class="small">Each player swipes from their own bee to the flower they want. Both can swipe at once.</p>
     </div>
     <p class="err" id="err"></p>
     <p class="small">Tap a flower and your bee flies straight there. New here? <a href="visual-guide.html" target="_blank">See how to play</a>.</p>
@@ -329,7 +331,13 @@ function renderLobby() {
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 let toastT = 0;
-function toast(msg) { $("toast").textContent = msg; $("toast").classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 2600); }
+function toast(msg) {
+  if (shared()) {
+    // two on one screen: a small note in each player's own card, so each reads it from their side
+    seats.forEach(seat => { const n = seat.el && seat.el.querySelector(".note"); if (!n) return; n.textContent = msg; n.classList.add("on"); clearTimeout(seat.noteT); seat.noteT = setTimeout(() => n.classList.remove("on"), 2600); });
+    return;
+  }
+  $("toast").textContent = msg; $("toast").classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 2600); }
 function countdown(n) {
   const el = $("count"); el.style.display = "flex";
   const end = performance.now() + n * 1000;
@@ -347,7 +355,7 @@ function showResults(rank) {
 // ---- input: tap a flower and the bee flies straight there
 //   one player:            tap or click the flower (mouse hover shows the line first);
 //                          on a keyboard, Space steps through the nearest flowers
-//   two on a phone/tablet: drag from your own end-of-screen button onto the flower
+//   two on a phone/tablet: swipe from your own bee to the flower (one finger each)
 const shared = () => seats.length > 1;
 const touchy = () => matchMedia("(pointer: coarse)").matches;
 let lastS = null, hover = -1;
@@ -362,13 +370,42 @@ function aims() {
   return out;
 }
 const cvEl = $("cv");
+const swipes = new Map();                         // finger -> the seat it is steering
+function seatAt(px, py) {
+  const S = lastS; if (!S) return null;
+  const here = S.b.filter(b => seats.some(s => s.id === b.id) && (b.st === 0 || b.st === 1));
+  const b = Garden.beeAt(px, py, here);
+  if (b) return seats.find(s => s.id === b.id);
+  const f = Garden.flowerAt(px, py);               // or the flower your bee is circling
+  const on = here.find(x => x.st === 0 && x.f === f);
+  return on ? seats.find(s => s.id === on.id) : null;
+}
 cvEl.addEventListener("pointerdown", e => {
   e.preventDefault();
   const f = Garden.flowerAt(e.clientX, e.clientY);
-  if (shared()) { if (f >= 0) toast("Drag from your own button onto a flower"); return; }
+  if (shared()) {
+    const seat = seatAt(e.clientX, e.clientY);
+    if (!seat || seat.drag) { if (f >= 0) toast("Swipe from your own bee to a flower"); return; }
+    try { cvEl.setPointerCapture(e.pointerId); } catch (err) {}
+    swipes.set(e.pointerId, seat); seat.drag = true; seat.aim = -1; seat.from = f;
+    if (seat.el) seat.el.classList.add("down");
+    return;
+  }
   if (f >= 0) { fly(seats[0], f); hover = -1; }
 });
-cvEl.addEventListener("pointermove", e => { if (e.pointerType === "mouse" && !shared()) hover = Garden.flowerAt(e.clientX, e.clientY); });
+cvEl.addEventListener("pointermove", e => {
+  const seat = swipes.get(e.pointerId);
+  if (seat) { const f = Garden.flowerAt(e.clientX, e.clientY); seat.aim = f === seat.from ? -1 : f; return; }
+  if (e.pointerType === "mouse" && !shared()) hover = Garden.flowerAt(e.clientX, e.clientY);
+});
+const endSwipe = (e, go) => {
+  const seat = swipes.get(e.pointerId); if (!seat) return;
+  swipes.delete(e.pointerId);
+  if (go) fly(seat, seat.aim);
+  seat.drag = false; seat.aim = -1; if (seat.el) seat.el.classList.remove("down");
+};
+cvEl.addEventListener("pointerup", e => endSwipe(e, true));
+cvEl.addEventListener("pointercancel", e => endSwipe(e, false));
 cvEl.addEventListener("pointerleave", () => { hover = -1; });
 cvEl.addEventListener("contextmenu", e => e.preventDefault());
 
@@ -392,16 +429,6 @@ window.addEventListener("keydown", e => {
   if (!e.repeat) stepPick(seats[0]);
 });
 
-// shared touch screens: press your edge button, drag to a flower, let go
-function dragFrom(el, seat) {
-  el.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); try { el.setPointerCapture(e.pointerId); } catch (err) {} seat.drag = true; seat.aim = -1; el.classList.add("down"); });
-  el.addEventListener("pointermove", e => { if (seat.drag) seat.aim = Garden.flowerAt(e.clientX, e.clientY); });
-  const end = () => { if (!seat.drag) return; seat.drag = false; el.classList.remove("down"); fly(seat, seat.aim); seat.aim = -1; };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", () => { seat.drag = false; seat.aim = -1; el.classList.remove("down"); });
-  el.addEventListener("contextmenu", e => e.preventDefault());
-}
-
 // Two on one touch screen: a button at each player's end. Held upright, one
 // sits at the bottom and one at the top (turned to face that player); held
 // sideways, one on the left and one on the right.
@@ -423,10 +450,9 @@ function buildEdges() {
     ["left", "right", "top", "bottom"].forEach(k => { if (sp[k]) b.style[k] = sp[k]; });
     b.style.transform = `${sp.tx || ""} ${sp.flip ? "rotate(180deg)" : ""}`.trim() || "none";
     b.setAttribute("aria-label", `${seat.name || "Player " + (i + 1)}: drag onto a flower`);
-    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">DRAG TO A FLOWER</span><div class="hp"><div></div></div><span class="st">0 honey</span><button type="button" class="stg">STING</button>`;
+    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">SWIPE FROM YOUR BEE</span><div class="hp"><div></div></div><span class="st">0 honey</span><span class="note"></span><button type="button" class="stg">STING</button>`;
     const chip = b.querySelector(".stg");
     chip.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); sting(seat); });
-    dragFrom(b, seat);
     seat.el = b; host.appendChild(b);
   });
 }
@@ -450,7 +476,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 const hpColor = f => f > .5 ? "#4fae52" : f > .25 ? "#f0a824" : "#e8504f";
-const action = st => st === 0 ? "DRAG TO A FLOWER" : st === 1 ? "FLYING…" : st === 2 ? "DIZZY…" : "FAINTED…";
+const action = st => st === 0 ? "SWIPE FROM YOUR BEE" : st === 1 ? "FLYING…" : st === 2 ? "DIZZY…" : "FAINTED…";
 // the sting button: ready, armed for the next flight, dashing now, or cooling down
 function paintSting(el, b, big) {
   if (!el) return;
@@ -480,10 +506,10 @@ function hud(S) {
   if (shared()) seats.forEach(seat => {
     const b = S.b.find(x => x.id === seat.id); if (!b || !seat.el) return;
     const f = Math.max(0, b.hp) / 100, st = stats.get(seat.slot) || { flowers: 0, rate: 0 };
-    seat.el.querySelector(".act").textContent = seat.drag ? "NOW LET GO ON A FLOWER" : action(b.st);
+    seat.el.querySelector(".act").textContent = seat.drag ? (seat.aim >= 0 ? "LIFT TO FLY THERE" : "SLIDE TO A FLOWER") : action(b.st);
     const bar = seat.el.querySelector(".hp div"); bar.style.width = (f * 100) + "%"; bar.style.background = hpColor(f);
     paintSting(seat.el.querySelector(".stg"), b, false);
-    seat.el.querySelector(".st").textContent = `${b.score} honey · ${st.flowers} flower${st.flowers === 1 ? "" : "s"} · +${st.rate}/s`;
+    seat.el.querySelector(".st").textContent = `${b.score} honey · +${st.rate}/s`;
   });
   const left = S.left ?? 0; $("clock").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");
   $("clock").classList.toggle("low", left < 15 && S.ph === "play");

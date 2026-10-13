@@ -211,7 +211,7 @@ Bots know this too: they sting rivals in their path and avoid fortified flowers.
 | Setup | How you steer |
 |---|---|
 | **One player per device** (phone, tablet, laptop) | Tap or click a flower. On a keyboard you can also tap **Space** to step a ring through the nearest flowers; the bee flies there when you stop tapping. |
-| **Two players on one phone or tablet** | Home screen → **Play two on this screen** (shown on touch screens only). Each player has a button at their end of the screen: **drag it onto a flower** and let go. Held upright, one button is at the bottom and one at the top (turned to face that player); held sideways, one on each side. |
+| **Two players on one phone or tablet** | Home screen → **Play two on this screen** (shown on touch screens only). **Swipe from your own bee** (or the flower it is circling) **to the flower you want**, and lift your finger: the bee flies there. Both players can swipe at the same time. Each player has a small card at their end of the screen (turned to face them) with health, honey, a **Sting** chip, and the game's notices, so both sides can read them. |
 
 Every other player joins from their own device with the garden code, so a match can be
 two friends on one tablet plus more on their phones. Each player on a shared screen is

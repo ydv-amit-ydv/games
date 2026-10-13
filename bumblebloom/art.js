@@ -388,6 +388,17 @@ const Garden = (() => {
     const { s, ox, oy, rot: r, vw } = view;
     return r ? { x: (py - ox) / s, y: (vw - px - oy) / s } : { x: (px - ox) / s, y: (py - oy) / s };
   }
+  function toScreen(x, y) {
+    if (!view) return null;
+    const { s, ox, oy, rot: r, vw } = view;
+    return r ? { x: vw - (oy + s * y), y: ox + s * x } : { x: ox + s * x, y: oy + s * y };
+  }
+  // the bee nearest a finger, among the given bees, if it is close enough to mean that bee
+  function beeAt(px, py, bees, reach = 46) {
+    let best = null, bd = reach;
+    for (const b of bees) { const p = toScreen(b.x, b.y); if (!p) continue; const d = Math.hypot(p.x - px, p.y - py); if (d < bd) { bd = d; best = b; } }
+    return best;
+  }
   // the flower under a finger or the mouse (fingers get a little extra room)
   function flowerAt(px, py) {
     const p = toWorld(px, py); if (!p || !world) return -1;
@@ -446,7 +457,7 @@ const Garden = (() => {
       const f = world.fl[a.f], bad = hitsTrap(b, f), who = solo ? "" : (b.name || "") + ": ";
       const armed = b.armed || b.sting;
       const col = bad ? "#e8504f" : armed ? "#d9411e" : solo ? "rgba(255,255,255,.95)" : PC[b.slot];
-      const what = a.mode === "pick" ? "flying here…" : armed ? "sting dash here" : solo ? "tap to fly here" : "let go to fly here";
+      const what = a.mode === "pick" ? "flying here…" : armed ? "sting dash here" : solo ? "tap to fly here" : "lift to fly here";
       aimLine(b, f, col, bad ? who + "this way hits the flytrap!" : who + what, bad ? "#c03a3a" : armed ? "#b8361a" : null);
     });
     // particles
@@ -535,7 +546,7 @@ const Garden = (() => {
     return out;
   }
 
-  return { setup, draw, fx: addFx, fit, stats, flowerAt, nearestFlowers, hitsTrap, get world() { return world; } };
+  return { setup, draw, fx: addFx, fit, stats, flowerAt, beeAt, toScreen, nearestFlowers, hitsTrap, get world() { return world; } };
 })();
 
 
