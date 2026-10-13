@@ -33,7 +33,7 @@ The game
   Sting dash: tap Sting and your next (or current) flight becomes a fast
   dash; the first rival it touches loses 35 health and goes dizzy. If that
   bee faints within a few seconds, the honey it drops goes to you (the
-  bounty). 8 s cooldown, per player.
+  bounty). Each bee's sting then recharges for 3 s on its own.
   Fortified patches: a patch of 4+ joined flowers grows a hedge, and its
   flowers take 3 loops to steal instead of 2.
 
@@ -91,7 +91,7 @@ WEB_DPS = 18
 
 # ---- sting dash
 STING_DMG = 35
-STING_CD = 8.0                      # seconds between stings, per player
+STING_CD = 3.0                      # seconds before a bee can sting again (each bee has its own)
 STING_SPEED = 1.45                  # a dash flies this much faster than a normal flight
 STING_REACH = BEE_R * 2.6           # a little more forgiving than a bump
 STING_DIZZY = 1.0
@@ -167,7 +167,7 @@ def seg_dist(ax, ay, bx, by, px, py):
 class Seat:
     """A player: a phone (or a bot), their colour, their honey and their sting."""
     __slots__ = ("id", "slot", "name", "w", "room", "key", "bot", "gone", "dev",
-                 "score", "total", "faints", "blooms", "knocks", "sting_cd", "sting_armed", "auto")
+                 "score", "total", "faints", "blooms", "knocks", "sting_armed", "auto")
 
     def send(self, frame):
         if self.w is None:
@@ -184,7 +184,7 @@ class Seat:
 class Worker:
     """One bee in the garden. A player has one in the Meadow, more in later levels."""
     __slots__ = ("id", "seat", "slot", "state", "f", "ang", "rad", "dir", "v", "prog", "x", "y", "vx", "vy",
-                 "timer", "hp", "safe", "hit_cd", "target", "wait", "sting", "last_hit")
+                 "timer", "hp", "safe", "hit_cd", "target", "wait", "sting", "sting_cd", "last_hit")
 
 
 class Watcher:
@@ -246,7 +246,7 @@ def new_seat(name, bot=False):
 
 
 def reset_seat(s):
-    s.score, s.faints, s.blooms, s.knocks, s.sting_cd, s.sting_armed = 0.0, 0, 0, 0, 0.0, False
+    s.score, s.faints, s.blooms, s.knocks, s.sting_armed = 0.0, 0, 0, 0, False
 
 
 def new_worker(seat, k):
@@ -255,7 +255,7 @@ def new_worker(seat, k):
     w.state, w.f, w.ang, w.rad, w.dir, w.v, w.prog = "orbit", 0, 0.0, 40.0, 1, OMEGA0, 0.0
     w.x = w.y = w.vx = w.vy = 0.0
     w.timer, w.hp, w.safe, w.hit_cd = 0.0, HP_MAX, 0.0, 0.0
-    w.target, w.wait, w.sting, w.last_hit = None, 1.0, False, None
+    w.target, w.wait, w.sting, w.sting_cd, w.last_hit = None, 1.0, False, 0.0, None
     return w
 
 
@@ -346,7 +346,7 @@ def state_msg(room, now):
                      int(s.score), round(w.prog, 2), w.f, w.dir, round(w.rad, 1),
                      round(w.vx, 1), round(w.vy, 1), 1 if w.safe > 0 else 0, round(w.v, 2),
                      -1 if w.target is None or w.state != "fly" else w.target,
-                     1 if w.sting else 0, 1 if s.sting_armed else 0, round(s.sting_cd, 1), s.id, int(s.total)])
+                     1 if w.sting else 0, 1 if s.sting_armed else 0, round(w.sting_cd, 1), s.id, int(s.total)])
     preds = []
     for p in room.preds:
         if p["k"] == "dragon":
@@ -569,7 +569,7 @@ def launch(room, w, fi):
         return False
     w.state, w.target, w.prog = "fly", fi, 0.0
     s = w.seat
-    if s.sting_armed or (s.auto and not s.bot and s.sting_cd <= 0 and rival_in_way(room, w, fi)):
+    if w.sting_cd <= 0 and not w.sting and (s.sting_armed or (s.auto and not s.bot and rival_in_way(room, w, fi))):
         start_sting(w)
     return True
 
@@ -583,22 +583,21 @@ def rival_in_way(room, w, fi):
 
 
 def start_sting(w):
-    """One sting per player: the bee that takes it dashes, and every other bee of theirs is disarmed."""
-    s = w.seat
-    for o in s.room.workers if s.room else ():
-        if o.seat is s:
-            o.sting = False
-    w.sting, s.sting_armed, s.sting_cd = True, False, STING_CD
+    """This bee's flight becomes a dash. A press of Sting is used up (all the player's bees are
+    disarmed), and this bee's own sting recharges for STING_CD seconds."""
+    w.sting, w.sting_cd, w.seat.sting_armed = True, STING_CD, False
 
 
 def arm_sting(room, s):
-    """Sting while a bee is flying and that flight becomes the dash; otherwise the next one does."""
-    if s.sting_cd > 0 or s.sting_armed or any(w.sting for w in room.workers if w.seat is s):
+    """Sting while a bee with a ready sting is flying and that flight becomes the dash;
+    otherwise the next flight of a bee whose sting is ready does."""
+    if s.sting_armed:
         return
-    flying = [w for w in room.workers if w.seat is s and w.state == "fly"]
+    mine = [w for w in room.workers if w.seat is s and w.state in ("orbit", "fly")]
+    flying = [w for w in mine if w.state == "fly" and w.sting_cd <= 0 and not w.sting]
     if flying:
         start_sting(flying[0])
-    else:
+    elif any(w.sting_cd <= 0 for w in mine):
         s.sting_armed = True
 
 
@@ -663,7 +662,7 @@ def bot_think(room, w, dt, skill):
     options.sort()
     best = random.choice(options)[1] if random.random() < sk["random"] else options[0][1]
     s = w.seat
-    if s.sting_cd <= 0 and random.random() < sk["sting"] and rival_in_way(room, w, best):
+    if w.sting_cd <= 0 and random.random() < sk["sting"] and rival_in_way(room, w, best):
         s.sting_armed = True                    # a rival sits on the way: make it a dash
     launch(room, w, best)
     w.wait = random.uniform(*sk["wait"])        # how long it lingers after its next landing
@@ -677,8 +676,6 @@ def step(room, dt, now):
         f["flash"] = max(0.0, f["flash"] - dt)
         f["web"] = max(0.0, f["web"] - dt)
     room.fort = fortified(wd)
-    for s in room.seats.values():
-        s.sting_cd = max(0.0, s.sting_cd - dt)
 
     for w in room.workers:
         s = w.seat
@@ -688,6 +685,7 @@ def step(room, dt, now):
             bot_think(room, w, dt, "normal")      # autopilot while their phone is away
         w.safe = max(0.0, w.safe - dt)
         w.hit_cd = max(0.0, w.hit_cd - dt)
+        w.sting_cd = max(0.0, w.sting_cd - dt)
         if w.state in ("dizzy", "faint"):
             w.timer -= dt
             if w.timer <= 0:

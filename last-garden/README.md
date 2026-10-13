@@ -56,6 +56,13 @@ Limits of browser mode:
 - Some strict school, office or mobile-carrier networks block browser-to-browser connections.
 - The crash snapshot to disk exists only in server mode.
 
+If the host's phone sleeps for a moment (switching apps to share the code is enough), runners
+already in keep playing, and the host's tab reconnects by itself with the **same code**. Someone
+joining meanwhile sees "Looking for tournament …" and gets in once the host is back (it keeps
+trying for 30 seconds). Codes ignore spaces, dashes and lower case, and never use 0, O, 1, I or L.
+To use a self-run PeerJS server instead of the public one, add `?broker=host:port` to the address
+(`npx peer --port 9000`); `?broker=public` switches back.
+
 ### B. Server mode: `python server.py`
 
 ```bash

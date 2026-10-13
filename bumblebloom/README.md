@@ -39,6 +39,13 @@ Things to know:
 - **The host's tab has to stay open and in front** for the whole game. Phones slow down
   background tabs, so a laptop or tablet makes the best host. If the host closes the tab, the garden ends.
 - A player whose connection drops can reload and rejoin their seat while the host is still there.
+- **If the host's phone sleeps for a moment** (switching apps to share the code is enough), players
+  already in keep playing, and the host's tab reconnects by itself with the **same code** when it
+  is back in front. Someone joining meanwhile sees "Looking for garden …" and gets in once the
+  host is back (it keeps trying for 30 seconds). Codes ignore spaces, dashes and lower case, and never
+  use 0, O, 1, I or L.
+- **Your own broker:** add `?broker=host:port` to the address to use a self-run PeerJS server
+  (`npx peer --port 9000`) instead of the public one; `?broker=public` switches back.
 - About 1 in 10–20 networks (strict school, office or mobile-carrier networks) block direct
   browser-to-browser connections. Players there see "Could not connect…". Switching to another
   Wi-Fi, or using server mode, fixes it.
@@ -168,7 +175,9 @@ Tap **Sting** (or press **E**; in two-on-one-screen mode, the Sting chip on your
   A dash at a rival's flower strikes whoever is circling it.
 - **Bounty:** if a bee you stung or bumped faints within 4 seconds, the honey it drops
   (15% of its honey) goes to you, and the toast says so.
-- Then an **8 second** cooldown. A dash that hits nobody ends when you land.
+- Then **that bee's sting recharges for 3 seconds**. With several bees, each bee has its own
+  recharge: one press of Sting is one dash (the button is used up for all your bees), but a bee
+  whose sting is ready can dash while another is still recharging. A dash that hits nobody ends when you land.
 - While armed, your stinger glows and the aim line turns red ("sting dash here").
 
 ### Fortified patches
@@ -200,8 +209,9 @@ choose the match:
 - Your card shows the bees as dots, filled when free (`●●○ 2 of 3 bees free`), and a health bar for each.
 - If none is free, the tap does nothing and a small note says *All your bees are busy pollinating*.
   Tapping a flower one of your bees is already flying to does nothing either, so a double tap never sends two.
-- Your bees pass through each other. Your sting and its cooldown belong to you, not to each bee:
-  one dash, from whichever bee flies next. Fainting drops honey split between your bees
+- Your bees pass through each other. Each bee recharges its own sting (3 s); an orange ring on
+  its dot means that bee's sting is ready, and the button says how many are ready ("2 of 3 ready").
+  Pressing Sting arms your next flight by a bee whose sting is ready. Fainting drops honey split between your bees
   (15% ÷ the number of bees each).
 - On a keyboard, **Space** steps a ring through the flowers nearest to one free bee.
 - **Not in two-on-one-screen mode.** Swiping from "your bee" stops making sense when you have

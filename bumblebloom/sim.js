@@ -30,7 +30,7 @@ const BloomSim = (() => {
   const HP_MAX = 100, HEAL_PER_S = 7, FAINT_SECONDS = 3, FAINT_HONEY_LOSS = .15, SAFE_SECONDS = 1.5, DIZZY_SECONDS = 1.6;
   const BUMP_DMG = 10, TRAP_DMG = 35, DRAGON_DMG = 25, BIRD_DMG = 45, WEB_DPS = 18, TRAP_R = 24;
   // sting dash and fortified patches (see server.py)
-  const STING_DMG = 35, STING_CD = 8, STING_SPEED = 1.45, STING_REACH = BEE_R * 2.6, STING_DIZZY = 1, BOUNTY_WINDOW = 4;
+  const STING_DMG = 35, STING_CD = 3, STING_SPEED = 1.45, STING_REACH = BEE_R * 2.6, STING_DIZZY = 1, BOUNTY_WINDOW = 4;
   const FORTIFY_SIZE = 4, FORTIFY_LOOPS = 3;
   const PRED_FIRST = 12, PRED_GAP = [7, 13], DRAGON_SPEED = 380, BIRD_WARN = 1.8, BIRD_R = 75, WEB_SECONDS = 10;
   const SIZES = [[2, 1240, 780, 10], [4, 1440, 880, 14], [6, 1640, 980, 18], [8, 1840, 1080, 22],
@@ -92,10 +92,10 @@ const BloomSim = (() => {
       const s = { id: this.nextId++, name: clean(name), link: null, bot, gone: null, dev: "", key: newKey(), slot: 0, total: 0, auto: !bot };   // auto: a flight at a rival becomes a dash by itself
       this.resetSeat(s); return s;
     }
-    resetSeat(s) { Object.assign(s, { score: 0, faints: 0, blooms: 0, knocks: 0, stingCd: 0, stingArmed: false }); }
+    resetSeat(s) { Object.assign(s, { score: 0, faints: 0, blooms: 0, knocks: 0, stingArmed: false }); }
     newWorker(seat, k) {
       return { id: seat.id * 10 + k, seat, slot: seat.slot, state: "orbit", f: 0, ang: 0, rad: 40, dir: 1, v: OMEGA0, prog: 0,
-        x: 0, y: 0, vx: 0, vy: 0, timer: 0, hp: HP_MAX, safe: 0, hitCd: 0, target: null, wait: 1, sting: false, lastHit: null };
+        x: 0, y: 0, vx: 0, vy: 0, timer: 0, hp: HP_MAX, safe: 0, hitCd: 0, target: null, wait: 1, sting: false, stingCd: 0, lastHit: null };   // stingCd: each bee recharges its own sting
     }
     freeSlot() { const used = new Set([...this.seats.values()].map(s => s.slot)); for (let i = 0; i < MAX_SEATS; i++) if (!used.has(i)) return i; }
     label(s) { return s.name || NAMES[s.slot] + " bee"; }
@@ -126,7 +126,7 @@ const BloomSim = (() => {
     stateMsg(now) {
       const st = { orbit: 0, fly: 1, dizzy: 2, faint: 3 };
       const msg = { t: "s", left: this.phase === "play" ? r1(Math.max(0, this.tEnd - now)) : ROUND_SECONDS, ph: this.phase,
-        b: this.workers.map(w => { const s = w.seat; return [w.id, r1(w.x), r1(w.y), r3(w.ang), st[w.state], Math.round(w.hp), Math.floor(s.score), r2(w.prog), w.f, w.dir, r1(w.rad), r1(w.vx), r1(w.vy), w.safe > 0 ? 1 : 0, r2(w.v), w.target == null || w.state !== "fly" ? -1 : w.target, w.sting ? 1 : 0, s.stingArmed ? 1 : 0, r1(s.stingCd), s.id, Math.floor(s.total)]; }),
+        b: this.workers.map(w => { const s = w.seat; return [w.id, r1(w.x), r1(w.y), r3(w.ang), st[w.state], Math.round(w.hp), Math.floor(s.score), r2(w.prog), w.f, w.dir, r1(w.rad), r1(w.vx), r1(w.vy), w.safe > 0 ? 1 : 0, r2(w.v), w.target == null || w.state !== "fly" ? -1 : w.target, w.sting ? 1 : 0, s.stingArmed ? 1 : 0, r1(w.stingCd), s.id, Math.floor(s.total)]; }),
         o: this.world.flowers.map(f => f.owner),
         p: this.preds.map(p => p.k === "dragon" ? ["d", Math.round(p.x), Math.round(p.y), r2(Math.atan2(p.vy, p.vx)), p.id]
           : p.k === "bird" ? ["b", Math.round(p.x), Math.round(p.y), r2(p.age / BIRD_WARN), p.id] : ["s", p.f, 0, r2(p.age), r2(p.life)]) };
@@ -251,7 +251,7 @@ const BloomSim = (() => {
       if (!(w.state === "orbit" || w.state === "fly") || (w.state === "orbit" && fi === w.f)) return false;
       w.state = "fly"; w.target = fi; w.prog = 0;
       const s = w.seat;
-      if (s.stingArmed || (s.auto && !s.bot && s.stingCd <= 0 && this.rivalInWay(w, fi))) this.startSting(w);
+      if (w.stingCd <= 0 && !w.sting && (s.stingArmed || (s.auto && !s.bot && this.rivalInWay(w, fi)))) this.startSting(w);
       return true;
     }
     // Is a rival on the straight line to flower fi, or circling it? (auto sting, and the bots)
@@ -260,12 +260,16 @@ const BloomSim = (() => {
       return this.workers.some(o => o.slot !== w.slot && (o.state === "orbit" || o.state === "fly") && o.safe <= 0 &&
         (segDist(w.x, w.y, t.x, t.y, o.x, o.y) < 40 || (o.state === "orbit" && o.f === fi)));
     }
-    // one sting per player: the bee that takes it dashes, and every other bee of theirs is disarmed
-    startSting(w) { this.workers.forEach(o => { if (o.seat === w.seat) o.sting = false; }); w.sting = true; w.seat.stingArmed = false; w.seat.stingCd = STING_CD; }
+    // this bee's flight becomes a dash: a press of Sting is used up (all the player's bees are
+    // disarmed), and this bee's own sting recharges for STING_CD seconds
+    startSting(w) { w.sting = true; w.stingCd = STING_CD; w.seat.stingArmed = false; }
+    // Sting while a bee with a ready sting is flying and that flight becomes the dash;
+    // otherwise the next flight of a bee whose sting is ready does
     armSting(s) {
-      if (s.stingCd > 0 || s.stingArmed || this.workers.some(w => w.seat === s && w.sting)) return;
-      const flying = this.workers.find(w => w.seat === s && w.state === "fly");
-      if (flying) this.startSting(flying); else s.stingArmed = true;
+      if (s.stingArmed) return;
+      const mine = this.workers.filter(w => w.seat === s && (w.state === "orbit" || w.state === "fly"));
+      const flying = mine.find(w => w.state === "fly" && w.stingCd <= 0 && !w.sting);
+      if (flying) this.startSting(flying); else if (mine.some(w => w.stingCd <= 0)) s.stingArmed = true;
     }
     // A player tapped flower fi: send the bee they picked, or their nearest free bee.
     command(s, fi, wid = null) {
@@ -301,7 +305,7 @@ const BloomSim = (() => {
       if (!options.length) { w.wait = .5; return; }
       options.sort((a, b) => a[0] - b[0]);
       const best = rand() < sk.random ? choice(options)[1] : options[0][1], s = w.seat;
-      if (s.stingCd <= 0 && rand() < sk.sting && this.rivalInWay(w, best)) s.stingArmed = true;
+      if (w.stingCd <= 0 && rand() < sk.sting && this.rivalInWay(w, best)) s.stingArmed = true;
       this.launch(w, best);
       w.wait = uniform(...sk.wait);                            // how long it lingers after its next landing
     }
@@ -309,12 +313,11 @@ const BloomSim = (() => {
       const wd = this.world, fl = wd.flowers, [cx, cy] = wd.trap;
       fl.forEach(f => { f.flash = Math.max(0, f.flash - dt); f.web = Math.max(0, f.web - dt); });
       this.fort = this.fortified();
-      this.seats.forEach(s => { s.stingCd = Math.max(0, s.stingCd - dt); });
       for (const w of this.workers) {
         const s = w.seat;
         if (s.bot) this.botThink(w, dt, this.skill);
         else if (s.gone != null) this.botThink(w, dt, "normal");   // autopilot while their phone is away
-        w.safe = Math.max(0, w.safe - dt); w.hitCd = Math.max(0, w.hitCd - dt);
+        w.safe = Math.max(0, w.safe - dt); w.hitCd = Math.max(0, w.hitCd - dt); w.stingCd = Math.max(0, w.stingCd - dt);
         if (w.state === "dizzy" || w.state === "faint") { w.timer -= dt; if (w.timer <= 0) this.respawn(w); continue; }
         if (w.state === "orbit") {
           const f = fl[w.f];

@@ -342,7 +342,7 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
       <button data-s="900" type="button">15m</button>
     </div>
   </div>
-  <div id="paneJoin" class="pane"><input id="code" maxlength="6" placeholder="ABCXYZ" autocomplete="off"></div>
+  <div id="paneJoin" class="pane"><input id="code" maxlength="8" autocapitalize="characters" spellcheck="false" placeholder="ABCXYZ" autocomplete="off"></div>
   <button id="go" class="big" type="button">Enter the garden</button>
   <button id="practice" class="ghost" type="button">Try it alone first — 90 seconds, nothing at stake</button>
   <p id="err"></p>
@@ -1081,6 +1081,7 @@ function handle(m) {
       if (m.cfg && typeof m.cfg.revealFrom === 'number') revealFrom = m.cfg.revealFrom;
       if (m.cfg && m.cfg.sanct) sanctSteps = m.cfg.sanct;
       me.id = m.id; roomCode = m.code; MI = m.cfg.mi; joined = true;
+      $('err').style.display = 'none'; $('err').style.color = '';
       mode = 'join'; joinCode = roomCode;
       if (m.key) { resumeKey = m.key; try { localStorage.setItem('garden_key', m.key); } catch (e) {} }
       setStage(m.stage);
@@ -1100,7 +1101,12 @@ function handle(m) {
       setStage(m.stage); $('wstage').textContent = m.stage.name;
       $('waitTitle').textContent = m.stage.idx > 0 ? 'Next: ' + m.stage.name : 'Get ready';
       break;
+    case 'netwait':
+      // still looking for the host's tab (browser mode): show it calmly, it is not an error yet
+      if (!joined) { $('err').textContent = m.msg; $('err').style.color = '#7a8a6a'; $('err').style.display = 'block'; }
+      break;
     case 'err':
+      $('err').style.color = '';
       if (reconnecting) {
         reconnecting = false; banner('');
         resumeKey = ''; roomCode = '';
@@ -1645,8 +1651,11 @@ function start() {
   name = $('nm').value.trim(); localStorage.setItem('garden_name', name);
   $('err').style.display = 'none';
   if (mode === 'join') {
-    joinCode = $('code').value.trim().toUpperCase();
+    joinCode = $('code').value.replace(/[\s-]/g, '').toUpperCase();
+    $('err').style.color = '';
+    if (/[01OIL]/.test(joinCode)) { $('err').textContent = 'Tournament codes never use 0, O, 1, I or L. Check the letters on the host\'s screen.'; $('err').style.display = 'block'; return; }
     if (joinCode.length !== 6) { $('err').textContent = 'Enter the 6-character tournament code.'; $('err').style.display = 'block'; return; }
+    $('code').value = joinCode;
   }
   beep(330, 494, .2, 'triangle', .04);
   connect();

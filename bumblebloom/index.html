@@ -47,6 +47,7 @@ input:focus { outline: none; border-color: #5fbb56; }
 .row > * { flex: 1; }
 .or { text-align: center; color: var(--muted); font-size: .85rem; font-weight: 700; }
 .err { color: #b3261e; font-weight: 700; font-size: .92rem; min-height: 1.2em; margin: 0; }
+.err.info { color: var(--muted); }
 .small { color: var(--muted); font-size: .85rem; margin: 0; }
 .small a { color: var(--leaf); font-weight: 800; }
 
@@ -87,6 +88,7 @@ input:focus { outline: none; border-color: #5fbb56; }
 #free i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--c); background: transparent; }
 #free i.ok { background: var(--c); }
 #free i.down { opacity: .35; }
+#free i.sr { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ff7a45; }   /* this bee's sting is ready */
 #free:empty { display: none; }
 #clock small { display: block; font-size: .68rem; text-align: center; color: var(--muted); font-weight: 800; }
 #honey { font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
@@ -179,7 +181,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <button class="btn honey" id="solo" type="button">Play solo against bot bees</button>
     <button class="btn go" id="create" type="button">Make a garden for friends</button>
     <div class="or">or join a friend's garden</div>
-    <div class="row"><input id="code" maxlength="6" placeholder="CODE" autocomplete="off" aria-label="Garden code"><button class="btn alt" id="join" type="button" style="flex:.6">Join</button></div>
+    <div class="row"><input id="code" maxlength="8" autocapitalize="characters" spellcheck="false" placeholder="CODE" autocomplete="off" aria-label="Garden code"><button class="btn alt" id="join" type="button" style="flex:.6">Join</button></div>
     <div id="duo" style="display:none;gap:10px">
       <div class="or">or two players on this phone or tablet</div>
       <button class="btn go" id="together" type="button">Play two on this screen</button>
@@ -221,7 +223,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <p>Every second, each <b>patch</b> of your flowers joined by vines gives <b>flowers × flowers</b> honey. Flowers close together grow vines between them.</p>
     <table><tr><td>1 flower on its own</td><td>+1 / s</td></tr><tr><td>2 joined flowers</td><td>2 × 2 = +4 / s</td></tr><tr><td>3 joined flowers</td><td>3 × 3 = +9 / s</td></tr><tr><td>4 joined flowers</td><td>4 × 4 = +16 / s</td></tr><tr><td>5 joined flowers</td><td>5 × 5 = +25 / s</td></tr></table>
     <p><b>Fortified:</b> a patch of 4 or more grows a hedge, and its flowers take <b>3 loops</b> to steal instead of 2.</p>
-    <p><b>Sting dash</b> (button or <b>E</b>): your flight becomes a fast dash that hits the first rival it touches for 35 health. Knock them out within 4 s and their dropped honey is yours. 8 s cooldown.</p>
+    <p><b>Sting dash</b> (button or <b>E</b>): your flight becomes a fast dash that hits the first rival it touches for 35 health. Knock them out within 4 s and their dropped honey is yours. Then that bee's sting recharges for 3 s; with several bees, each recharges on its own (an orange ring on its dot means ready).</p>
     <p><b>Auto sting</b> (lobby switch): when your sting is ready, a flight at a rival turns into the dash by itself.</p>
     <p><b>Several bees</b> (levels 2 and 3): a bee is free once it circles one of your own flowers (the white ring). Tap a flower and your nearest free bee goes.</p>
     <p><b>Vine reach:</b> faint dots run from your flowers to every flower close enough to join them. Take a dotted one and your patch grows.</p>
@@ -298,10 +300,15 @@ function closeAll() { const old = seats; seats = []; old.forEach(s => { if (s.li
 
 async function start(mode, count = 1) {
   const name = $("name").value.trim(); store.set("bb-name", name);
-  const code = $("code").value.trim().toUpperCase();
-  if (mode === "join" && !/^[A-Z0-9]{6}$/.test(code)) { $("err").textContent = "Garden codes are 6 letters and numbers."; return; }
-  $("err").textContent = "";
-  closeAll();
+  const code = $("code").value.replace(/[\s-]/g, "").toUpperCase();
+  $("err").classList.remove("info");
+  if (mode === "join") {
+    if (/[01OIL]/.test(code)) { $("err").textContent = "Garden codes never use 0, O, 1, I or L. Check the letters on the host's screen."; return; }
+    if (!/^[A-Z0-9]{6}$/.test(code)) { $("err").textContent = "Garden codes are 6 letters and numbers."; return; }
+    $("code").value = code;
+    $("err").classList.add("info"); $("err").textContent = `Joining garden ${code}…`;
+  } else $("err").textContent = "";
+  closeAll(); lobby = null;
   await Net.ready();
   const first = { n: 0, name, down: false, wantFriends: count - 1 };
   seats = [first];
@@ -339,7 +346,9 @@ function onMessage(seat, m) {
     if (seat.n === 0) { history.replaceState(null, "", location.pathname + "?code=" + m.code); if (seat.wantFriends) { addFriends(m.code, seat.wantFriends); seat.wantFriends = 0; } }
     return;
   }
+  if (m.t === "netwait") { if (seat.n === 0 && !lobby) { $("err").classList.add("info"); $("err").textContent = m.msg; } return; }
   if (m.t === "err" || m.t === "lost") {
+    $("err").classList.remove("info");
     if (seat.n === 0) { $("err").textContent = m.msg || "That seat has gone. Start a new garden."; closeAll(); store.del("bb-seats"); show("home"); }
     else { seats = seats.filter(s => s !== seat); if (seat.ws) seat.ws.close(); toast(m.msg || "A player on this device could not join."); }
     return;
@@ -348,7 +357,7 @@ function onMessage(seat, m) {
   if (seat !== seats[0]) return;          // the screen follows the first seat only
   switch (m.t) {
     case "lobby":
-      lobby = m;
+      lobby = m; $("err").textContent = "";
       if (seats[0] && seats[0].code !== m.code) { seats.forEach(x => x.code = m.code); saveSeats(); }
       m.bees.forEach(b => { info.set(b.id, { slot: b.slot, name: b.name }); const s = seats.find(x => x.id === b.id); if (s) { s.slot = b.slot; s.name = b.name; } });
       if (m.phase === "lobby") { renderLobby(); show("lobby"); $("results").style.display = "none"; }
@@ -581,7 +590,7 @@ function frame(now) {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
     const ids = new Set(seatIds()), mine = S.b.filter(b => ids.has(b.seat)), webs = webbed(S);
     const free = lvl.workers > 1 ? new Set(mine.filter(b => isFree(S, b, webs)).map(b => b.id)) : null;
-    const ready = new Set(S.b.filter(b => isFree(S, b, webs)).map(b => b.id));   // bees that could take a sting
+    const ready = new Set(S.b.filter(b => isFree(S, b, webs) && !(b.stingCd > 0)).map(b => b.id));   // bees that could take a sting
     lastS = S;
     Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims(), free, ready, reachSlots: seats.map(s => s.slot) });
     hud(S);
@@ -591,25 +600,30 @@ function frame(now) {
 requestAnimationFrame(frame);
 const hpColor = f => f > .5 ? "#4fae52" : f > .25 ? "#f0a824" : "#e8504f";
 const action = st => st === 0 ? "SWIPE FROM YOUR BEE" : st === 1 ? "FLYING…" : st === 2 ? "DIZZY…" : "FAINTED…";
-// the sting button: ready, armed for the next flight, dashing now, or cooling down
-function paintSting(el, b, big) {
+// the sting button: armed for the next flight, ready, dashing now, or every bee recharging
+function paintSting(el, bees, big) {
   if (!el) return;
-  b = seatSting(b);
-  const state = b.sting && b.st === 1 ? "dash" : b.armed ? "armed" : b.stingCd > 0 ? "wait" : "ready";
-  const key = state + (state === "wait" ? Math.ceil(b.stingCd) : "");
+  const b = seatSting(bees);
+  const state = b.armed ? "armed" : b.ready ? "ready" : b.dash ? "dash" : "wait";
+  const key = state + b.ready + "/" + b.n + (state === "wait" ? Math.ceil(b.wait) : "");
   if (el.dataset.s === key) return;
   el.dataset.s = key;
   el.classList.toggle("armed", state === "armed" || state === "dash");
   el.classList.toggle("wait", state === "wait");
-  const main = state === "dash" ? "DASHING!" : state === "armed" ? "ARMED" : state === "wait" ? `STING ${Math.ceil(b.stingCd)}s` : "STING";
-  const sub = state === "armed" ? "tap a flower" : state === "dash" ? "hit a rival" : state === "wait" ? "recharging" : opts.auto ? (touchy() ? "auto on" : "auto on · key E") : "key E";
+  const main = state === "dash" ? "DASHING!" : state === "armed" ? "ARMED" : state === "wait" ? `STING ${Math.ceil(b.wait)}s` : "STING";
+  const many = b.n > 1 ? `${b.ready} of ${b.n} ready` : "";
+  const sub = state === "armed" ? "tap a flower" : state === "dash" ? "hit a rival" : state === "wait" ? "recharging"
+    : many || (opts.auto ? (touchy() ? "auto on" : "auto on · key E") : "key E");
   el.innerHTML = big ? `${main}<small>${sub}</small>` : main;
 }
-// a player's sting, from all their bees: armed and cooldown are the player's, a dash is any bee's
+// a player's sting, from all their bees: "armed" is the player's (one press, one dash),
+// and each bee has its own recharge
 function seatSting(bees) {
   if (!Array.isArray(bees)) bees = [bees];
-  const dash = bees.some(b => b.sting && b.st === 1), b0 = bees[0] || {};
-  return { sting: dash, st: dash ? 1 : 0, armed: b0.armed, stingCd: b0.stingCd || 0 };
+  const up = bees.filter(b => b.st === 0 || b.st === 1);
+  const cds = up.map(b => b.stingCd || 0);
+  return { armed: !!(bees[0] && bees[0].armed), dash: bees.some(b => b.sting && b.st === 1), n: bees.length,
+    ready: up.filter(b => !(b.stingCd > 0) && !(b.sting && b.st === 1)).length, wait: cds.length ? Math.min(...cds) : 0 };
 }
 function hpBars(el, bees) {
   if (el.children.length !== bees.length) el.innerHTML = bees.map(() => `<div class="hp"><div></div></div>`).join("");
@@ -623,7 +637,7 @@ function hud(S) {
     hpBars($("hps"), mine);
     const freeN = mine.filter(b => isFree(S, b, webs)).length;
     $("free").style.setProperty("--c", PC[me.slot]);
-    $("free").innerHTML = mine.length > 1 ? mine.map(b => `<i class="${isFree(S, b, webs) ? "ok" : b.st >= 2 ? "down" : ""}"></i>`).join("") + `<span>${freeN} of ${mine.length} bees free</span>` : "";
+    $("free").innerHTML = mine.length > 1 ? mine.map(b => `<i class="${isFree(S, b, webs) ? "ok" : b.st >= 2 ? "down" : ""}${b.stingCd > 0 ? "" : " sr"}" title="${b.stingCd > 0 ? "sting recharging" : "sting ready"}"></i>`).join("") + `<span>${freeN} of ${mine.length} bees free</span>` : "";
     $("honey").textContent = mb.score + " honey" + (lvl.of > 1 ? ` · match ${run(mb)}` : "");
     const st = stats.get(me.slot);
     const sum = st.patches.length ? st.patches.map(n => n > 1 ? `${n}×${n}` : "1").join(" + ") : "no flowers yet";
