@@ -16,11 +16,15 @@ The game
   Your flowers that sit close together are joined by vines into a patch, and
   a patch of n flowers makes n*n honey a second.
 
-  Levels: a match is one round (Meadow, one bee each) or three levels -
-  Meadow, Orchard (two bees each), Hive (three bees each), in ever bigger
-  gardens, with honey added up across them. With more than one bee, a bee is
-  FREE once it is circling one of your own flowers (it has finished
-  pollinating), and a tap sends your nearest free bee.
+  Hives: in a solo game your hive grows with the garden it holds - one bee
+  to start, a 2nd at 3 flowers, a 3rd at 5, a 4th at 7 - and a bee flies home
+  if you stay below its step for 8 s. Bots grow the same way but never have
+  more bees than you, and get sharper as you get stronger. With friends,
+  every hive has 2 bees in round 1 and 3 in round 2; the best 4 hives play
+  the final with 3 bees and a 4th to unlock at 6 flowers. New flowers sprout
+  during every round. With more than one bee, a bee is FREE once it is
+  circling one of your own flowers (it has finished pollinating), and a tap
+  sends your nearest free bee.
 
   Bees have 100 health. Predators turn up at random:
     dragonfly  darts straight across the lawn and stings any bee it touches
@@ -46,10 +50,11 @@ import asyncio, base64, hashlib, json, math, os, random, socket, string, struct,
 HOST, PORT = "0.0.0.0", int(os.environ.get("PORT", 8000))
 TICK = 1 / 60
 SEND_EVERY = 3                      # state goes out at 20 Hz
-ROUND_SECONDS = int(os.environ.get("BLOOM_ROUND", 120))   # default round length; the host can pick another
+ROUND_SECONDS = int(os.environ.get("BLOOM_ROUND", 120))   # round length; the host can pick another...
+ROUND_FIXED = "BLOOM_ROUND" in os.environ                 # ...unless the server fixes it (events, testing)
 ROUND_CHOICES = (60, 120, 180, 300)
 RESULTS_SECONDS = 15
-BETWEEN_LEVELS = 10                 # the results pause between levels of a match
+BETWEEN_ROUNDS = 10                 # the results pause between rounds of a match
 COUNTDOWN = 3
 MAX_SEATS = 8
 MAX_ROOMS = 100
@@ -59,8 +64,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CODE_CHARS = "".join(c for c in string.ascii_uppercase + string.digits if c not in "0O1IL")
 NAMES = ["Red", "Blue", "Gold", "Violet", "Orange", "Pink", "Teal", "Brown"]
 
-# ---- levels: how many bees each player commands
-LEVELS = [{"name": "Meadow", "workers": 1}, {"name": "Orchard", "workers": 2}, {"name": "Hive", "workers": 3}]
+# ---- how many bees a hive has
+# Solo: the hive grows with the garden it holds: flowers needed for the 1st, 2nd, 3rd, 4th bee.
+GROW_STEPS = (0, 3, 5, 7)
+# With friends: a fixed number of bees each round; the final is for the best 4 hives,
+# with one more bee to unlock by holding 6 flowers. A single round plays like the final.
+ROUNDS = [{"name": "Round 1", "bees": 2}, {"name": "Round 2", "bees": 3},
+          {"name": "Final", "bees": 3, "bonus": 6, "top": 4}]
+SHRINK_GRACE = 8.0                  # below a step this long and that bee flies home
+MAX_BEES = 4
+
+# ---- the garden grows during a round
+START_SHARE = 0.65                  # of the garden's flowers are open at the start; the rest sprout
+SPROUT_FIRST = 10.0                 # seconds into the round before the first new flower
 
 # ---- bot skill: pause before moving on (s), chance of a random pick, chance of
 #      not checking the flytrap path, chance of using a sting when a rival is in the way
@@ -69,6 +85,18 @@ SKILL = {
     "normal": {"wait": (0.9, 1.8), "random": 0.15, "careless": 0.0, "sting": 0.4},
     "hard":   {"wait": (0.4, 1.0), "random": 0.0, "careless": 0.0, "sting": 1.0},
 }
+SKILL_ORDER = ["easy", "normal", "hard"]
+
+
+def skill_at(f):
+    """A bot skill between the named ones: 0 = easy, 1 = normal, 2 = hard (solo bots move along it)."""
+    f = max(0.0, min(2.0, f))
+    a, b = SKILL[SKILL_ORDER[int(f)]], SKILL[SKILL_ORDER[min(2, int(f) + 1)]]
+    u = f - int(f)
+    mix = lambda x, y: x + (y - x) * u
+    return {"wait": (mix(a["wait"][0], b["wait"][0]), mix(a["wait"][1], b["wait"][1])),
+            "random": mix(a["random"], b["random"]), "careless": mix(a["careless"], b["careless"]),
+            "sting": mix(a["sting"], b["sting"])}
 
 # ---- flight
 # Circling only matters for pollinating now, so it is a steady, calm turn.
@@ -98,6 +126,9 @@ STING_REACH = BEE_R * 2.6           # a little more forgiving than a bump
 STING_DIZZY = 1.0
 BOUNTY_WINDOW = 4.0                 # faint this soon after a sting or bump and the honey goes to whoever hit you
 
+# ---- teamwork: each extra bee of yours circling a flower you are taking adds this much speed
+CO_POLLEN = 0.8                     # 2 bees = 1.8x, 3 bees = 2.6x: the way to crack a fortified patch
+
 # ---- fortified patches
 FORTIFY_SIZE = 4                    # a patch of this many joined flowers is fortified
 FORTIFY_LOOPS = 3                   # loops a rival needs to take one of its flowers (normally 2)
@@ -113,15 +144,19 @@ BIRD_WARN = 1.8
 BIRD_R = 75.0
 WEB_SECONDS = 10.0
 
-# arena size and flower count by number of bees in it (all players' bees together)
+# arena size and flower count by the number of bees it is meant for (all hives at full size)
 SIZES = [(2, 1240, 780, 10), (4, 1440, 880, 14), (6, 1640, 980, 18), (8, 1840, 1080, 22),
          (12, 2040, 1180, 28), (16, 2240, 1300, 34), (24, 2540, 1460, 44)]
 
 
 # ------------------------------------------------------------------ world
-def make_world(n_bees, seed):
+def make_world(n_bees, seed, aspect=None):
     rng = random.Random(seed)
     W, H, count = next(((w, h, c) for cap, w, h, c in SIZES if n_bees <= cap), SIZES[-1][1:])
+    if aspect:
+        # the same lawn area in the shape of the host's screen, so a phone held sideways is filled
+        a = max(1.3, min(2.2, aspect))
+        W, H = int(round(math.sqrt(W * H * a) / 10) * 10), int(round(math.sqrt(W * H / a) / 10) * 10)
     cx, cy = W / 2, H / 2
     flowers = []
     dmin = math.sqrt(W * H / count) * 0.66
@@ -141,7 +176,10 @@ def make_world(n_bees, seed):
                 fails = 0
     nn = sorted(min(math.hypot(a["x"] - b["x"], a["y"] - b["y"]) for b in flowers if b is not a) for a in flowers)
     link = round(nn[len(nn) // 2] * 1.45, 1)
-    return {"W": W, "H": H, "seed": seed, "trap": (cx, cy), "flowers": flowers, "link": link}
+    # most flowers are open at the start; the rest (the gaps the spacing filled last) sprout during the round
+    n_open = max(min(count, 6), int(round(count * START_SHARE)))
+    return {"W": W, "H": H, "seed": seed, "trap": (cx, cy), "flowers": flowers[:n_open],
+            "dormant": flowers[n_open:], "link": link}
 
 
 def spread_starts(world, n):
@@ -168,7 +206,8 @@ def seg_dist(ax, ay, bx, by, px, py):
 class Seat:
     """A player: a phone (or a bot), their colour, their honey and their sting."""
     __slots__ = ("id", "slot", "name", "w", "room", "key", "bot", "gone", "dev",
-                 "score", "total", "faints", "blooms", "knocks", "sting_armed", "auto")
+                 "score", "total", "faints", "blooms", "knocks", "sting_armed", "auto",
+                 "out", "shrink_at")
 
     def send(self, frame):
         if self.w is None:
@@ -183,7 +222,7 @@ class Seat:
 
 
 class Worker:
-    """One bee in the garden. A player has one in the Meadow, more in later levels."""
+    """One bee in the garden. A hive has one to four."""
     __slots__ = ("id", "seat", "slot", "state", "f", "ang", "rad", "dir", "v", "prog", "x", "y", "vx", "vy",
                  "timer", "hp", "safe", "hit_cd", "target", "wait", "sting", "sting_cd", "last_hit")
 
@@ -219,8 +258,14 @@ class Room:
         self.bots_wanted = 0
         self.skill = "easy"
         self.secs = ROUND_SECONDS     # length of each round (each level of a match)
-        self.match = "single"       # single | levels
-        self.level = 0
+        self.match = "single"       # single | rounds (with friends)
+        self.level = 0              # which round of a match
+        self.skill_f = 0.0          # solo: how sharp the bots are now (0 easy .. 2 hard)
+        self.next_sprout = 0.0
+        self.sprout_gap = 10.0
+        self.next_adapt = 0.0
+        self.sprout_told = False
+        self.aspect = None          # the shape of the host's screen (width / height), for the garden
         self.last_end = None
         self.fort = set()           # flowers in a fortified patch, worked out each tick
 
@@ -243,12 +288,13 @@ def new_seat(name, bot=False):
     s.key = base64.urlsafe_b64encode(os.urandom(12)).decode().rstrip("=")
     s.slot = 0
     s.total = 0.0
+    s.out = False                   # sitting out the final (only the best 4 hives play it)
     reset_seat(s)
     return s
 
 
 def reset_seat(s):
-    s.score, s.faints, s.blooms, s.knocks, s.sting_armed = 0.0, 0, 0, 0, False
+    s.score, s.faints, s.blooms, s.knocks, s.sting_armed, s.shrink_at = 0.0, 0, 0, 0, False, None
 
 
 def new_worker(seat, k):
@@ -270,8 +316,23 @@ def label(s):
     return s.name or (NAMES[s.slot] + " bee")
 
 
-def workers_per_seat(room):
-    return LEVELS[room.level]["workers"]
+def round_rule(room):
+    """This round's bee rule: grow with your flowers (solo) or a fixed number (with friends)."""
+    if room.solo:
+        return {"kind": "grow", "name": "Solo", "bees": 1, "steps": list(GROW_STEPS)}
+    if room.match == "rounds":
+        return dict(ROUNDS[room.level], kind="fixed")
+    r = dict(ROUNDS[-1], kind="fixed", name="One round")
+    r.pop("top", None)
+    return r
+
+
+def bees_of(room, s):
+    return [w for w in room.workers if w.seat is s]
+
+
+def ordinal(n):
+    return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, "%dth" % n)
 
 
 def devices(room):
@@ -311,16 +372,17 @@ def gen_code():
 
 
 def level_info(room):
-    lv = LEVELS[room.level]
-    return {"idx": room.level, "name": lv["name"], "workers": lv["workers"],
-            "of": len(LEVELS) if room.match == "levels" else 1, "match": room.match}
+    r = round_rule(room)
+    return {"idx": room.level, "name": r["name"], "kind": r["kind"], "bees": r["bees"], "bonus": r.get("bonus"),
+            "steps": r.get("steps"), "top": r.get("top"), "max": MAX_BEES,
+            "of": len(ROUNDS) if room.match == "rounds" and not room.solo else 1, "match": room.match}
 
 
 def lobby_msg(room):
     humans = [s for s in room.seats.values() if not s.bot]
     return F({"t": "lobby", "code": room.code, "host": room.host, "solo": room.solo, "shared": room.shared,
               "bots": room.bots_wanted, "skill": room.skill, "match": room.match, "secs": room.secs, "phase": room.phase,
-              "devices": devices(room), "canLevels": not room.shared,
+              "devices": devices(room), "canLevels": True,
               "bees": [{"id": s.id, "slot": s.slot, "name": label(s), "bot": s.bot, "away": s.gone is not None,
                         "auto": s.auto} for s in sorted(humans, key=lambda s: s.slot)]})
 
@@ -328,8 +390,10 @@ def lobby_msg(room):
 def world_msg(room):
     wd = room.world
     return {"W": wd["W"], "H": wd["H"], "seed": wd["seed"], "link": wd["link"],
-            "trap": wd["trap"], "flowers": [[f["x"], f["y"], f["r"]] for f in wd["flowers"]],
-            "seats": [{"id": s.id, "slot": s.slot, "name": label(s), "bot": s.bot}
+            # open flowers first, then the ones still to sprout (the state's owner list says how many are open)
+            "trap": wd["trap"], "flowers": [[f["x"], f["y"], f["r"]] for f in wd["flowers"] + wd["dormant"]],
+            "open": len(wd["flowers"]),
+            "seats": [{"id": s.id, "slot": s.slot, "name": label(s), "bot": s.bot, "out": s.out}
                       for s in sorted(room.seats.values(), key=lambda s: s.slot)],
             "bees": [{"id": w.id, "slot": w.slot, "name": label(w.seat), "bot": w.seat.bot, "seat": w.seat.id}
                      for w in room.workers],
@@ -385,7 +449,7 @@ def start_countdown(room, fresh=True):
     room.t_phase = time.time() + COUNTDOWN
     if fresh:
         room.level = 0
-        if room.shared or room.match not in ("single", "levels"):
+        if room.match not in ("single", "rounds"):
             room.match = "single"
         for s in [s for s in room.seats.values() if s.bot]:
             room.seats.pop(s.id)
@@ -397,13 +461,16 @@ def start_countdown(room, fresh=True):
             bot.room = room
             room.seats[bot.id] = bot
         for s in room.seats.values():
-            s.total = 0.0
+            s.total, s.out = 0.0, False
+        room.skill_f = float(SKILL_ORDER.index(room.skill))
     for s in room.seats.values():
         reset_seat(s)
-    k = workers_per_seat(room)
-    seats = sorted(room.seats.values(), key=lambda s: s.slot)
-    room.workers = [new_worker(s, j) for s in seats for j in range(k)]
-    room.world = make_world(len(room.workers), random.randrange(1 << 30))
+    r = round_rule(room)
+    seats = sorted((s for s in room.seats.values() if not s.out), key=lambda s: s.slot)
+    room.workers = [new_worker(s, j) for s in seats for j in range(r["bees"])]
+    # the garden is sized for every hive at full strength
+    full = len(seats) * (3 if r["kind"] == "grow" else r["bees"] + (1 if r.get("bonus") else 0))
+    room.world = make_world(full, random.randrange(1 << 30), room.aspect)
     fl = room.world["flowers"]
     homes = spread_starts(room.world, len(seats))
     taken = set(homes)
@@ -411,7 +478,7 @@ def start_countdown(room, fresh=True):
         # a player's bees start together: one on their home flower, the others on
         # the nearest white flowers, so they grow one patch instead of scattered ones
         fl[home]["owner"] = s.slot
-        team = [w for w in room.workers if w.seat is s]
+        team = bees_of(room, s)
         near = sorted((i for i in range(len(fl)) if i not in taken),
                       key=lambda i: math.hypot(fl[i]["x"] - fl[home]["x"], fl[i]["y"] - fl[home]["y"]))
         spots = [home] + near[:len(team) - 1]
@@ -433,32 +500,44 @@ def start_play(room, now):
     room.phase = "play"
     room.t_end = now + room.secs
     room.next_pred = now + PRED_FIRST
+    # the flowers still to come sprout evenly over most of the round
+    room.next_sprout = now + SPROUT_FIRST
+    room.sprout_gap = max(3.0, (room.secs * 0.75 - SPROUT_FIRST) / max(1, len(room.world["dormant"])))
+    room.next_adapt = now + 10
+    room.sprout_told = False
 
 
 def end_round(room, now):
     for s in room.seats.values():
         s.total += s.score
-    more = room.match == "levels" and room.level < len(LEVELS) - 1
+    more = room.match == "rounds" and not room.solo and room.level < len(ROUNDS) - 1
     room.phase = "results"
-    room.t_phase = now + (BETWEEN_LEVELS if more else RESULTS_SECONDS)
-    key = (lambda s: -s.score) if room.match == "single" else (lambda s: -s.total)
+    room.t_phase = now + (BETWEEN_ROUNDS if more else RESULTS_SECONDS)
+    key = (lambda s: (s.out, -s.score)) if room.match == "single" or room.solo else (lambda s: (s.out, -s.total))
     rank = []
     for s in sorted(room.seats.values(), key=key):
         ps = patches(room.world, s.slot)
         rank.append({"slot": s.slot, "name": label(s), "honey": int(s.score), "total": int(s.total), "bot": s.bot,
-                     "blooms": s.blooms, "faints": s.faints, "knocks": s.knocks,
+                     "blooms": s.blooms, "faints": s.faints, "knocks": s.knocks, "out": s.out,
                      "flowers": sum(1 for f in room.world["flowers"] if f["owner"] == s.slot),
                      "patch": max((len(p) for p in ps), default=0), "rate": sum(len(p) ** 2 for p in ps)})
+    nxt = ROUNDS[room.level + 1] if more else None
     room.last_end = {"t": "end", "rank": rank, "level": level_info(room), "final": not more,
-                     "next": LEVELS[room.level + 1]["name"] if more else None,
-                     "nextWorkers": LEVELS[room.level + 1]["workers"] if more else None,
-                     "in": BETWEEN_LEVELS if more else RESULTS_SECONDS}
+                     "next": nxt["name"] if nxt else None, "nextWorkers": nxt["bees"] if nxt else None,
+                     "nextTop": nxt.get("top") if nxt else None,
+                     "in": BETWEEN_ROUNDS if more else RESULTS_SECONDS}
     broadcast(room, F(room.last_end))
 
 
 def after_results(room):
-    if room.match == "levels" and room.level < len(LEVELS) - 1:
+    if room.match == "rounds" and not room.solo and room.level < len(ROUNDS) - 1:
         room.level += 1
+        top = ROUNDS[room.level].get("top")
+        if top:
+            # the final: only the best hives so far play it; the others watch
+            ranked = sorted(room.seats.values(), key=lambda s: -s.total)
+            for i, s in enumerate(ranked):
+                s.out = i >= top
         start_countdown(room, fresh=False)
     else:
         back_to_lobby(room)
@@ -470,6 +549,8 @@ def back_to_lobby(room):
     room.workers = []
     for s in [s for s in room.seats.values() if s.bot or s.gone is not None]:
         room.seats.pop(s.id)
+    for s in room.seats.values():
+        s.out = False
     if room.host not in room.seats and room.seats:
         room.host = next(iter(room.seats))
     broadcast(room, lobby_msg(room))
@@ -497,7 +578,7 @@ def hurt(room, w, dmg, why, by=None):
 def faint(room, w, why):
     s = w.seat
     w.state, w.timer, w.hp, w.sting = "faint", FAINT_SECONDS, 0, False
-    lost = int(s.score * FAINT_HONEY_LOSS / workers_per_seat(room))
+    lost = int(s.score * FAINT_HONEY_LOSS / max(1, len(bees_of(room, s))))
     s.score -= lost
     s.faints += 1
     fx(room, "faint", w.x, w.y, w.slot)
@@ -557,7 +638,7 @@ def is_free(room, w):
     """May this bee take a new order? With one bee: whenever it is up. With
     several: only once it has finished pollinating - circling one of your own
     flowers (or caught in a web, which it should leave)."""
-    if workers_per_seat(room) == 1:
+    if sum(1 for o in room.workers if o.seat is w.seat) == 1:
         return w.state in ("orbit", "fly")
     if w.state != "orbit":
         return False
@@ -613,8 +694,9 @@ def command(room, s, fi, wid=None):
             launch(room, pick[0], fi)
             return
     t = fl[fi]
-    if len(mine) > 1 and any(w.state == "fly" and w.target == fi for w in mine):
-        return                                  # one of your bees is already on its way there
+    if t["owner"] == s.slot and any((w.state == "fly" and w.target == fi) or (w.state == "orbit" and w.f == fi) for w in mine):
+        return                                  # one of your bees is already on (or on its way to) your flower
+    # a flower you are taking: another tap sends another free bee to help (see CO_POLLEN)
     free = [w for w in mine if is_free(room, w) and not (w.state == "orbit" and w.f == fi)]
     if not free:
         if any(w.state == "orbit" and w.f == fi for w in mine):
@@ -625,7 +707,7 @@ def command(room, s, fi, wid=None):
     launch(room, w, fi)
 
 
-def bot_think(room, w, dt, skill):
+def bot_think(room, w, dt, sk):
     wd = room.world
     fl = wd["flowers"]
     if w.state != "orbit":
@@ -640,7 +722,6 @@ def bot_think(room, w, dt, skill):
     w.wait -= dt
     if w.wait > 0:
         return
-    sk = SKILL[skill]
     birds = [p for p in room.preds if p["k"] == "bird"]
     cx, cy = wd["trap"]
     careless = random.random() < sk["careless"]
@@ -648,15 +729,16 @@ def bot_think(room, w, dt, skill):
     for i, t in enumerate(fl):
         if i == w.f or t["owner"] == w.slot or t["web"] > 0:
             continue
-        if any(o.seat is w.seat and o.target == i for o in room.workers):
-            continue                            # a teammate is already on its way there
+        mates = any(o.seat is w.seat and (o.target == i or (o.state == "orbit" and o.f == i)) for o in room.workers)
+        if mates and i not in room.fort:
+            continue                            # a teammate is already on it (on a hedge, though, help it) there
         if not careless and seg_dist(w.x, w.y, t["x"], t["y"], cx, cy) < TRAP_R + BEE_R + 30:
             continue                            # that straight line runs through the flytrap
         if any(math.hypot(t["x"] - p["x"], t["y"] - p["y"]) < BIRD_R + 40 for p in birds):
             continue
         sc = math.hypot(t["x"] - f["x"], t["y"] - f["y"]) + (120 if t["owner"] is not None else 0) + random.random() * 90
         if i in room.fort:
-            sc += 220                           # a hedge makes it slow to take
+            sc += 20 if mates else 220          # a hedge makes it slow to take, unless a teammate is on it
         options.append((sc, i))
     if not options:
         w.wait = 0.5
@@ -682,9 +764,9 @@ def step(room, dt, now):
     for w in room.workers:
         s = w.seat
         if s.bot:
-            bot_think(room, w, dt, room.skill)
+            bot_think(room, w, dt, skill_at(room.skill_f) if room.solo else SKILL[room.skill])
         elif s.gone is not None:
-            bot_think(room, w, dt, "normal")      # autopilot while their phone is away
+            bot_think(room, w, dt, SKILL["normal"])   # autopilot while their phone is away
         w.safe = max(0.0, w.safe - dt)
         w.hit_cd = max(0.0, w.hit_cd - dt)
         w.sting_cd = max(0.0, w.sting_cd - dt)
@@ -705,10 +787,14 @@ def step(room, dt, now):
             elif f["owner"] == w.slot:
                 w.hp = min(HP_MAX, w.hp + HEAL_PER_S * dt)
             else:
-                w.prog += w.v * dt
+                k = sum(1 for o in room.workers if o.seat is s and o.state == "orbit" and o.f == w.f)
+                w.prog += w.v * dt * (1 + CO_POLLEN * (k - 1))
                 loops = 1 if f["owner"] is None else FORTIFY_LOOPS if w.f in room.fort else 2
                 if w.prog >= loops * math.tau:
-                    f["owner"], f["flash"], w.prog = w.slot, 1.0, 0.0
+                    f["owner"], f["flash"] = w.slot, 1.0
+                    for o in room.workers:
+                        if o.seat is s and o.f == w.f:
+                            o.prog = 0.0            # the helpers are done too: they are on your flower now
                     s.blooms += 1
                     fx(room, "bloom", f["x"], f["y"], w.slot)
         elif w.state == "fly":
@@ -768,9 +854,98 @@ def step(room, dt, now):
                 bump(room, c, a)
 
     step_predators(room, dt, now)
+    step_garden(room, now)
+    manage_hives(room, now)
 
     for s in room.seats.values():
         s.score += sum(len(p) ** 2 for p in patches(wd, s.slot)) * dt
+
+
+def step_garden(room, now):
+    """New flowers sprout during the round, and stay."""
+    wd = room.world
+    if wd["dormant"] and now >= room.next_sprout:
+        f = wd["dormant"].pop(0)
+        wd["flowers"].append(f)
+        f["flash"] = 1.0
+        fx(room, "sprout", f["x"], f["y"])
+        room.next_sprout = now + room.sprout_gap
+        if not room.sprout_told:
+            room.sprout_told = True
+            room.toast = "New flowers are sprouting in the garden!"
+    if room.solo and now >= room.next_adapt:
+        # solo bots get sharper while the player is well ahead, and ease back (never below the
+        # chosen skill) while they are well behind
+        room.next_adapt = now + 10
+        me = max((s.score for s in room.seats.values() if not s.bot), default=0)
+        best = max((s.score for s in room.seats.values() if s.bot), default=0)
+        base = float(SKILL_ORDER.index(room.skill))
+        if me > best * 1.15 + 20:
+            room.skill_f = min(2.0, room.skill_f + 0.25)
+        elif me < best * 0.7:
+            room.skill_f = max(base, room.skill_f - 0.25)
+
+
+def bees_allowed(room, s, flowers, humans_most):
+    """How many bees this hive may have right now."""
+    if s.out:
+        return 0
+    r = round_rule(room)
+    if r["kind"] == "grow":
+        n = max(1, sum(1 for k in GROW_STEPS if flowers >= k))
+        # bots never have more bees than the player
+        return min(n, MAX_BEES, humans_most) if s.bot else min(n, MAX_BEES)
+    return r["bees"] + (1 if r.get("bonus") and flowers >= r["bonus"] else 0)
+
+
+def manage_hives(room, now):
+    """Hatch a bee when a hive reaches a step; send one home when it has stayed below a step too long."""
+    counts = {}
+    for f in room.world["flowers"]:
+        if f["owner"] is not None:
+            counts[f["owner"]] = counts.get(f["owner"], 0) + 1
+    have = {s.id: bees_of(room, s) for s in room.seats.values()}
+    humans_most = max((len(have[s.id]) for s in room.seats.values() if not s.bot), default=1) or 1
+    r = round_rule(room)
+    for s in room.seats.values():
+        mine, n = have[s.id], counts.get(s.slot, 0)
+        want = bees_allowed(room, s, n, humans_most)
+        if want > len(mine):
+            s.shrink_at = None
+            hatch(room, s, mine)
+            if not s.bot:
+                note(s, "A new bee hatched: you have %d bees" % (len(mine) + 1))
+        elif want < len(mine) and mine:
+            need = GROW_STEPS[len(mine) - 1] if r["kind"] == "grow" else r.get("bonus")
+            if s.shrink_at is None:
+                s.shrink_at = now + SHRINK_GRACE
+                if not s.bot and need:
+                    note(s, "Hold %d flowers or your %s bee flies home in %d s" % (need, ordinal(len(mine)), SHRINK_GRACE))
+            elif now >= s.shrink_at:
+                s.shrink_at = None
+                w = max(mine, key=lambda w: w.id)        # the newest bee goes
+                room.workers.remove(w)
+                fx(room, "home", w.x, w.y, w.slot)
+                if not s.bot and need:
+                    note(s, "Your %s bee flew home. Hold %d flowers to get it back" % (ordinal(len(mine)), need))
+        else:
+            s.shrink_at = None
+
+
+def hatch(room, s, mine):
+    """A new bee for this hive, on one of its own flowers, with a short shield."""
+    used = {w.id - s.id * 10 for w in mine}
+    k = next(i for i in range(10) if i not in used)
+    w = new_worker(s, k)
+    fl = room.world["flowers"]
+    own = [i for i, f in enumerate(fl) if f["owner"] == s.slot and f["web"] <= 0] or list(range(len(fl)))
+    fi = random.choice(own)
+    f = fl[fi]
+    w.f, w.rad, w.ang, w.safe, w.wait = fi, f["R"], random.uniform(0, math.tau), SAFE_SECONDS, 1.0
+    w.dir = 1 if s.slot % 2 == 0 else -1
+    place_on_orbit(w, f)
+    room.workers.append(w)
+    fx(room, "hatch", w.x, w.y, w.slot)
 
 
 def sting_hit(room, a, v):
@@ -931,12 +1106,12 @@ def apply_settings(room, m):
     v = m.get("bots")
     if type(v) is int:
         room.bots_wanted = max(0, min(MAX_SEATS - 1, v))
-    if m.get("secs") in ROUND_CHOICES:
+    if m.get("secs") in ROUND_CHOICES and not ROUND_FIXED:
         room.secs = m["secs"]
     if m.get("skill") in SKILL:
         room.skill = m["skill"]
-    if m.get("match") in ("single", "levels"):
-        room.match = "single" if room.shared else m["match"]
+    if m.get("match") in ("single", "rounds", "levels"):
+        room.match = "single" if m["match"] == "single" else "rounds"
 
 
 def join(s, room):
@@ -963,6 +1138,8 @@ def create(s, m):
     room = Room(gen_code())
     room.solo = m.get("mode") == "solo"
     room.shared = bool(m.get("shared"))
+    if type(m.get("aspect")) in (int, float):
+        room.aspect = float(m["aspect"])
     apply_settings(room, m)
     ROOMS[room.code] = room
     join(s, room)

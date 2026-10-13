@@ -99,7 +99,7 @@ A phone that drops out keeps its bee: autopilot flies it until the phone comes b
 | Setting | Default | |
 |---|---|---|
 | `PORT` | `8000` | port to listen on |
-| `BLOOM_ROUND` | `120` | default round length in seconds (server mode); the host can also pick 1, 2, 3 or 5 minutes in the lobby |
+| `BLOOM_ROUND` | (unset) | fixes the round length in seconds for every game on this server; unset, the host picks 1, 2, 3 or 5 minutes in the lobby |
 
 You can force browser mode on any host with `?mode=browser`.
 
@@ -213,6 +213,12 @@ and "· fortified" on its label). Stealing one of its flowers takes **3 loops** 
 so big patches are harder to break up, and a sting to clear the defender becomes the way in.
 Bots know this too: they sting rivals in their path and avoid fortified flowers.
 
+### Teamwork: several bees on one flower
+Each extra bee of yours circling a flower you are taking speeds it up by 80%: two bees pollinate
+1.8× as fast, three 2.6×. A fortified flower (3 loops) falls in about 3.5 s to three bees instead of
+9.4 s to one. To send a helper, tap the flower again: a tap on a flower one of your bees is already
+taking sends another free bee. Bots do the same on fortified flowers.
+
 ### Auto sting
 A switch on the home screen and in the lobby, **on** by default, and each player sets their own.
 When your sting is ready and you send a bee at a flower with a rival **on the straight line** or
@@ -220,33 +226,53 @@ When your sting is ready and you send a bee at a flower with a rival **on the st
 New players see the sting doing its job from the very first level, and with several bees to
 manage nobody has to time the button for each one.
 
-### Round and match
-A round lasts **2 minutes** by default (the host picks 1, 2, 3 or 5 minutes on the home screen or in the lobby; in a 3-level match every level lasts that long) and most honey wins. On the home screen (or in the lobby, for the host)
-choose the match:
+### Hives: how many bees you have
+Every player is a **hive** of 1 to 4 bees.
 
-| Match | What happens |
+**Solo** (one round): your hive grows with the garden it holds.
+
+| Flowers you hold | Bees |
 |---|---|
-| **1 round** | One Meadow round, one bee each. |
-| **3 levels** | **Meadow** (1 bee each) → **Orchard** (2 bees each) → **Hive** (3 bees each). Each level grows a bigger garden with more flowers, honey adds up across the three, and the most honey overall wins the match. There is a 10 second results pause between levels. |
+| any | 1 |
+| 3 | 2 |
+| 5 | 3 |
+| 7 | 4 (the most) |
 
-### Several bees (Orchard and Hive)
+Drop below a step and stay there for **8 seconds** and that bee flies home (your card warns you
+first); win the flowers back and it hatches again. Your card shows the next step, e.g.
+"4 of 5 flowers for your 3rd bee".
+
+**With friends** the bees are fixed per round:
+
+| Round | Bees each | Who plays |
+|---|---|---|
+| Round 1 | 2 | every hive |
+| Round 2 | 3 | every hive |
+| **Final** | 3, plus a 4th while you hold **6 flowers** | the **best 4 hives** by total honey; the rest watch |
+
+Honey adds up over the three rounds, with a 10 second results pause between them. **1 round**
+plays like the final, for every hive. The host picks 1 or 3 rounds, and 1, 2, 3 or 5 minutes per
+round, on the home screen or in the lobby.
+
+**The garden** is sized for every hive at full strength (about 9 flowers per hive). About two thirds
+of the flowers are open at the start; the rest **sprout during the round** and stay.
+
+### Your bees
 - **Tap a flower and your nearest free bee flies there.** You don't pick the bee.
 - A bee is **free** once it is circling one of your own flowers (it has finished pollinating),
   or when it is caught in a web. A free bee has a soft white ring around it.
-- Your card shows the bees as dots, filled when free (`●●○ 2 of 3 bees free`), and a health bar for each.
+- Your card shows the bees as dots, filled when free (`●●○ 2 of 3 free`), and a health bar for each.
 - If none is free, the tap does nothing and a small note says *All your bees are busy pollinating*.
-  Tapping a flower one of your bees is already flying to does nothing either, so a double tap never sends two.
+  Tapping again a flower one of your bees is already taking sends another free bee to help (see Teamwork).
 - Your bees pass through each other. Each bee recharges its own sting (3 s); an orange ring on
   its dot means that bee's sting is ready, and the button says how many are ready ("2 of 3 ready").
   Pressing Sting arms your next flight by a bee whose sting is ready. Fainting drops honey split between your bees
   (15% ÷ the number of bees each).
 - On a keyboard, **Space** steps a ring through the flowers nearest to one free bee.
-- **Not in two-on-one-screen mode.** Swiping from "your bee" stops making sense when you have
-  three, so a shared screen always plays one round with one bee each. For levels, each player
-  needs their own device.
+- **Two on one screen:** swipe from one of your own bees; the bee you touch is the one that flies.
 
-### Bot bees
-Choose **0–7 bot bees** (0 really means none: you and the garden, for practice) and their skill:
+### Bot hives
+Choose **0–7 bot hives** (0 really means none: you and the garden, for practice) and their skill:
 
 | Skill | Lingers on a flower | Picks | Flytrap | Sting |
 |---|---|---|---|---|
@@ -254,8 +280,20 @@ Choose **0–7 bot bees** (0 really means none: you and the garden, for practice
 | **Normal** | 0.9–1.8 s | random 15% of the time | always goes round | 40% of the time when a rival is in the way |
 | **Hard** | 0.4–1.0 s | always the best flower | always goes round | always when a rival is in the way |
 
-Bots on one team never chase the same flower. A player whose phone drops out keeps playing
-on Normal autopilot until they come back.
+Bots on one team never chase the same flower, and they compete with each other as much as with you.
+**Solo**, bot hives grow like yours but never have more bees than you, and they adjust: every 10 s
+they get a little sharper while you are well ahead and ease back (never below the chosen skill) while
+you are well behind. A player whose phone drops out keeps playing on Normal autopilot until they come back.
+
+### A clean screen
+- The game starts with nothing in the way: no help card (it is behind **?**), a short hint that
+  fades after a few seconds, and only your own patches labelled (a small "+9/s").
+- **Phones play sideways.** Starting a game asks for full screen in landscape (Android); a phone
+  held upright gets the game turned a quarter turn, so it fills the screen the long way.
+- After a round, **Home** leaves the garden and goes back to the start screen.
+- Speed: the still background and each kind of flower are painted once and reused, phones draw at
+  1.5× instead of 2×, and the cards only change when their text does: about six times the frame
+  rate of before on a slow phone.
 
 ---
 
@@ -264,7 +302,7 @@ on Normal autopilot until they come back.
 | Mode | Players | Description |
 |---|---|---|
 | **Garden Trail** (campaign) | 1 | 30 hand-made gardens: pollinate every flower in time, weave through hedge gaps, avoid moving flytraps. 1–3 stars per garden. |
-| **Skirmish** | 1 + bots | You against 0–7 bot bees (Easy / Normal / Hard), one round or three levels. |
+| **Skirmish** | 1 + bots | You against 0–7 bot hives (Easy / Normal / Hard, adjusting to you); your hive grows with your garden. |
 | **Free-for-all** | 2–8 | Every bee for itself. Empty seats can be filled with bots. |
 | **Hives** (teams) | 4–8 | 2v2, 2v2v2, 4v4. Teammates' flowers join into one shared patch. |
 
@@ -275,7 +313,7 @@ on Normal autopilot until they come back.
 | 3–4 | 14 | medium lawn |
 | 5–6 | 18 | large lawn |
 | 7–8 | 22 | large lawn, camera zooms out a little |
-| up to 12 bees (levels) | 28 | bigger lawn |
+| up to 12 bees | 28 | bigger lawn |
 | up to 16 bees | 34 | |
 | up to 24 bees (8 players × 3) | 44 | the largest lawn |
 

@@ -74,7 +74,7 @@ input:focus { outline: none; border-color: #5fbb56; }
 
 /* ---------- game ---------- */
 #game { flex-direction: column; background: #6fae5e; }
-#bgcv { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#bgcv, #flcv { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .hud { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 0; pointer-events: none; }
 .card { background: var(--card); border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.16); padding: 8px 12px; }
@@ -118,6 +118,23 @@ input:focus { outline: none; border-color: #5fbb56; }
 #board .mine { background: rgba(63,143,69,.14); border-radius: 6px; padding: 0 4px; }
 #toast { position: absolute; left: 50%; top: calc(66px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); font-weight: 800; padding: 8px 16px; border-radius: 999px; background: #fff7e0; color: #6f4e12; box-shadow: 0 4px 14px rgba(0,0,0,.18); pointer-events: none; opacity: 0; transition: opacity .3s; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
 #toast.on { opacity: 1; }
+#hint { transition: opacity .4s; }
+#hint.off { opacity: 0; }
+#grow { font-size: .78rem; font-weight: 800; color: var(--leaf); }
+#grow:empty { display: none; }
+/* a clean screen: on phones the card keeps only what you need mid-game */
+@media (max-width: 900px), (max-height: 500px) { #mystats { display: none; } #board { display: none; } #me { padding: 6px 10px; min-width: 0; } }
+#game.turned { inset: auto; top: 0; left: 0; transform-origin: top left; transform: rotate(90deg) translateY(-100%); }
+#game.watching #stingbtn { display: none; }
+/* a short game screen (a phone held sideways): compact cards, and the results fit with Home in view */
+#game.short #me { font-size: .85rem; gap: 2px; }
+#game.short #me .top { font-size: .9rem; }
+#game.short #results .sign { padding: 12px 18px; gap: 8px; max-height: 96%; }
+#game.short #results h2 { font-size: 1.3rem; }
+#game.short .rank div { padding: 4px 10px; }
+#game.short .rank small { display: none; }
+#game.short #rnext { font-size: .78rem; }
+#game.short #rhome { min-height: 40px; }
 #hint { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 10px 20px; border-radius: 999px; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.16); font-weight: 800; color: var(--ink); pointer-events: none; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis; }
 #count { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center; padding: 20px; }
 #count small { font: 800 1.1rem var(--f-body); color: #fff; max-width: 30em; background: rgba(30,68,35,.62); border-radius: 14px; padding: 8px 14px; }
@@ -158,7 +175,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
 
 /* ---------- results ---------- */
 #results { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,.35); padding: 20px; }
-#results .sign { width: min(440px, 100%); }
+#results .sign { width: min(440px, 100%); max-height: 94%; overflow-y: auto; }
 .rank { display: grid; gap: 6px; }
 .rank div { display: grid; grid-template-columns: 2ch 16px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 12px; background: #f3f8ee; font-weight: 700; }
 .rank div:first-child { background: linear-gradient(90deg, #fff2c2, #f3f8ee); }
@@ -175,10 +192,10 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <div class="brand"><canvas id="logo" width="112" height="112" aria-hidden="true"></canvas><div><h1>Bumblebloom</h1><p class="tag">A tap-to-fly garden race for 1–8 bees.</p></div></div>
     <label for="name">Your bee's name<input id="name" maxlength="14" autocomplete="nickname" placeholder="e.g. Buzzy"></label>
     <div class="opts">
-      <div class="stepper"><span>Bot bees<small id="hbotsnote">0 means no bots</small></span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="hbminus" aria-label="Fewer bots">−</button><b id="hbots">2</b><button type="button" id="hbplus" aria-label="More bots">+</button></div></div>
+      <div class="stepper"><span>Bot hives<small id="hbotsnote">0 means no bots</small></span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="hbminus" aria-label="Fewer bots">−</button><b id="hbots">2</b><button type="button" id="hbplus" aria-label="More bots">+</button></div></div>
       <div class="seg" id="hskill" role="group" aria-label="Bot skill"><span>Bot skill</span><button type="button" data-v="easy">Easy</button><button type="button" data-v="normal">Normal</button><button type="button" data-v="hard">Hard</button></div>
-      <div class="seg" id="hmatch" role="group" aria-label="Match length"><span>Match<small>3 levels: more bees each level</small></span><button type="button" data-v="single">1 round</button><button type="button" data-v="levels">3 levels</button></div>
-<div class="seg" id="hsecs" role="group" aria-label="Round length"><span>Round<small>each level lasts this long</small></span><button type="button" data-v="60">1 min</button><button type="button" data-v="120">2</button><button type="button" data-v="180">3</button><button type="button" data-v="300">5</button></div>
+      <div class="seg" id="hmatch" role="group" aria-label="Match length with friends"><span>With friends<small>3 rounds: 2 bees, 3 bees, then the final</small></span><button type="button" data-v="single">1 round</button><button type="button" data-v="rounds">3 rounds</button></div>
+<div class="seg" id="hsecs" role="group" aria-label="Round length"><span>Round<small>how long each round lasts</small></span><button type="button" data-v="60">1 min</button><button type="button" data-v="120">2</button><button type="button" data-v="180">3</button><button type="button" data-v="300">5</button></div>
       <div class="seg"><span>Auto sting<small>a flight at a rival becomes a dash by itself</small></span><button type="button" id="hauto" aria-pressed="true">On</button></div>
     </div>
     <button class="btn honey" id="solo" type="button">Play solo against bot bees</button>
@@ -188,10 +205,10 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <div id="duo" style="display:none;gap:10px">
       <div class="or">or two players on this phone or tablet</div>
       <button class="btn go" id="together" type="button">Play two on this screen</button>
-      <p class="small">Each player swipes from their own bee to the flower they want. Both can swipe at once. One bee each, one round (levels need a device per player).</p>
+      <p class="small">Each player swipes from one of their own bees to the flower they want. Both can swipe at once.</p>
     </div>
     <p class="err" id="err"></p>
-    <p class="small">Tap a flower and your bee flies straight there. New here? <a href="visual-guide.html" target="_blank">See how to play</a>.</p>
+    <p class="small">Tap a flower and your bee flies straight there. Solo, your hive grows with your garden: a 2nd bee at 3 flowers, a 3rd at 5, a 4th at 7.</p>
   </div>
 </section>
 
@@ -200,13 +217,13 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <div class="codebox"><span class="small">Garden code</span><b id="lcode">——————</b><span class="small" id="lurl"></span></div>
     <div class="bees" id="lbees"></div>
     <div id="hostbox" style="display:grid;gap:12px">
-      <div class="stepper"><span>Bot bees<small>0 means no bots</small></span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="bminus" aria-label="Fewer bots">−</button><b id="bots">0</b><button type="button" id="bplus" aria-label="More bots">+</button></div></div>
+      <div class="stepper"><span>Bot hives<small>0 means no bots</small></span><div style="display:flex;align-items:center;gap:10px"><button type="button" id="bminus" aria-label="Fewer bots">−</button><b id="bots">0</b><button type="button" id="bplus" aria-label="More bots">+</button></div></div>
       <div class="seg" id="lskill" role="group" aria-label="Bot skill"><span>Bot skill</span><button type="button" data-v="easy">Easy</button><button type="button" data-v="normal">Normal</button><button type="button" data-v="hard">Hard</button></div>
-      <div class="seg" id="lmatch" role="group" aria-label="Match length"><span>Match</span><button type="button" data-v="single">1 round</button><button type="button" data-v="levels">3 levels</button></div>
-      <div class="seg" id="lsecs" role="group" aria-label="Round length"><span>Round<small>each level lasts this long</small></span><button type="button" data-v="60">1 min</button><button type="button" data-v="120">2</button><button type="button" data-v="180">3</button><button type="button" data-v="300">5</button></div>
+      <div class="seg" id="lmatch" role="group" aria-label="Match length"><span>Match</span><button type="button" data-v="single">1 round</button><button type="button" data-v="rounds">3 rounds</button></div>
+      <div class="seg" id="lsecs" role="group" aria-label="Round length"><span>Round<small>how long each round lasts</small></span><button type="button" data-v="60">1 min</button><button type="button" data-v="120">2</button><button type="button" data-v="180">3</button><button type="button" data-v="300">5</button></div>
     </div>
     <p class="small" id="lset" style="text-align:center"></p>
-    <p class="lvls" id="llvls" style="display:none"><b>3 levels:</b> Meadow (1 bee each) → Orchard (2 bees) → Hive (3 bees), each a bigger garden. Honey adds up across the levels. With several bees, a bee is <b>free</b> once it is circling one of your own flowers: tap a flower and your nearest free bee goes.</p>
+    <p class="lvls" id="llvls"><b>One round:</b> every hive has 3 bees, and a 4th to unlock by holding 6 flowers.</p>
     <div class="seg"><span>Auto sting<small>a flight at a rival becomes a dash by itself</small></span><button type="button" id="lauto" aria-pressed="true">On</button></div>
     <button class="btn go" id="start" type="button">Start the round</button>
     <p class="small" id="waitmsg" style="text-align:center;display:none">Waiting for the host to start the round…</p>
@@ -217,9 +234,10 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
 
 <section class="screen" id="game">
   <canvas id="bgcv" aria-hidden="true"></canvas>
+  <canvas id="flcv" aria-hidden="true"></canvas>
   <canvas id="cv"></canvas>
   <div class="hud">
-    <div class="card" id="me"><div class="top"><i id="mydot"></i><span id="myname">You</span></div><div class="hps" id="hps" aria-label="Health"></div><div id="free"></div><span id="honey">0 honey</span><div id="mystats"></div></div>
+    <div class="card" id="me"><div class="top"><i id="mydot"></i><span id="myname">You</span></div><div class="hps" id="hps" aria-label="Health"></div><div id="free"></div><span id="honey">0 honey</span><div id="grow"></div><div id="mystats"></div></div>
     <div class="card" id="clock"><span id="clockt">2:00</span><small id="clockl"></small></div>
     <div style="display:grid;gap:8px;justify-items:end"><div class="card" id="board"></div><button id="helpbtn" type="button" aria-label="How honey works">?</button></div>
   </div>
@@ -228,9 +246,11 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
     <p>Every second, each <b>patch</b> of your flowers joined by vines gives <b>flowers × flowers</b> honey. Flowers close together grow vines between them.</p>
     <table><tr><td>1 flower on its own</td><td>+1 / s</td></tr><tr><td>2 joined flowers</td><td>2 × 2 = +4 / s</td></tr><tr><td>3 joined flowers</td><td>3 × 3 = +9 / s</td></tr><tr><td>4 joined flowers</td><td>4 × 4 = +16 / s</td></tr><tr><td>5 joined flowers</td><td>5 × 5 = +25 / s</td></tr></table>
     <p><b>Fortified:</b> a patch of 4 or more grows a hedge, and its flowers take <b>3 loops</b> to steal instead of 2.</p>
+    <p><b>Teamwork:</b> tap a flower your bee is taking again and another free bee joins it: 2 bees pollinate 1.8× as fast, 3 bees 2.6×. That is the way into a hedge.</p>
     <p><b>Sting dash</b> (button or <b>E</b>): your flight becomes a fast dash that hits the first rival it touches for 35 health. Knock them out within 4 s and their dropped honey is yours. Then that bee's sting recharges for 3 s; with several bees, each recharges on its own (an orange ring on its dot means ready).</p>
     <p><b>Auto sting</b> (lobby switch): when your sting is ready, a flight at a rival turns into the dash by itself.</p>
-    <p><b>Several bees</b> (levels 2 and 3): a bee is free once it circles one of your own flowers (the white ring). Tap a flower and your nearest free bee goes.</p>
+    <p><b>Your bees:</b> a bee is free once it circles one of your own flowers (the white ring). Tap a flower and your nearest free bee goes. Solo, your hive grows with your garden: a 2nd bee at 3 flowers, a 3rd at 5, a 4th at 7; drop below a step for 8 s and that bee flies home. With friends: 2 bees in round 1, 3 in round 2, and in the final (the best 4 hives) 3 bees plus a 4th at 6 flowers.</p>
+    <p><b>New flowers</b> sprout during the round and stay. The dots on your card show your bees: filled = free, orange ring = sting ready.</p>
     <p><b>Vine reach:</b> faint dots run from your flowers to every flower close enough to join them. Take a dotted one and your patch grows.</p>
     <p>So one big patch beats many small ones. Steal the middle flower of a rival's patch to split it in two. The label on each patch shows what it earns.</p>
     <button id="helpclose" type="button">Got it</button>
@@ -240,7 +260,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
   <button id="stingbtn" type="button" aria-label="Sting dash">STING<small>key E</small></button>
   <div id="edges"></div>
   <div id="count"><b id="countn">3</b><small id="countsub"></small></div>
-  <div id="results"><div class="sign"><h2 id="rtitle">Round over</h2><div class="rank" id="rlist"></div><p class="small" id="rnext" style="text-align:center">Back to the lobby in a moment…</p></div></div>
+  <div id="results"><div class="sign"><h2 id="rtitle">Round over</h2><div class="rank" id="rlist"></div><p class="small" id="rnext" style="text-align:center">Back to the lobby in a moment…</p><button class="btn alt" id="rhome" type="button">Home</button></div></div>
 </section>
 
 <script src="art.js?v=8"></script>
@@ -258,13 +278,14 @@ const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { ret
 // seats[0] drives the screen; the others only steer.
 let seats = [], lobby = null, info = new Map();
 // the level being played: how many bees each player commands
-let lvl = { idx: 0, name: "Meadow", workers: 1, of: 1, match: "single" };
+let lvl = { idx: 0, name: "", kind: "fixed", bees: 1, of: 1, match: "single" };
+let watching = false;                          // sitting out the final
 // one id per browser tab, so the server can tell two players on one screen from two devices
 const DEV = (() => { const r = () => Math.random().toString(36).slice(2, 10); try { let d = sessionStorage.getItem("bb-dev"); if (!d) { d = r(); sessionStorage.setItem("bb-dev", d); } return d; } catch (e) { return r(); } })();
 // home-screen choices, remembered on this device
 const num = (v, d) => v == null || v === "" || isNaN(+v) ? d : +v;
 const opts = { bots: Math.max(0, Math.min(7, num(store.get("bb-bots"), 2))), skill: store.get("bb-skill") || "easy",
-  match: store.get("bb-match") === "levels" ? "levels" : "single", auto: store.get("bb-auto") !== "0",
+  match: ["rounds", "levels"].includes(store.get("bb-match")) ? "rounds" : "single", auto: store.get("bb-auto") !== "0",
   secs: [60, 120, 180, 300].includes(num(store.get("bb-secs"), 120)) ? num(store.get("bb-secs"), 120) : 120 };
 const mins = s => s % 60 ? (s / 60).toFixed(1) + " min" : s / 60 + " min";
 const SKILLS = { easy: "Easy", normal: "Normal", hard: "Hard" };
@@ -272,10 +293,10 @@ if (!SKILLS[opts.skill]) opts.skill = "easy";
 function segPaint(id, v) { $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === String(v))); }
 function togPaint(id, on) { $(id).setAttribute("aria-pressed", on ? "true" : "false"); $(id).textContent = on ? "On" : "Off"; }
 function paintOpts() {
-  $("hbots").textContent = opts.bots; $("hbotsnote").textContent = opts.bots ? "bot bees in solo and new gardens" : "no bots: just you and the garden";
+  $("hbots").textContent = opts.bots; $("hbotsnote").textContent = opts.bots ? "bot hives in solo and new gardens" : "no bots: just you and the garden";
   segPaint("hskill", opts.skill); segPaint("hmatch", opts.match); segPaint("hsecs", opts.secs); togPaint("hauto", opts.auto);
   $("hskill").style.opacity = opts.bots ? 1 : .5;
-  $("solo").textContent = opts.bots ? `Play solo against ${opts.bots} bot bee${opts.bots > 1 ? "s" : ""}` : "Play solo (no bots: practise)";
+  $("solo").textContent = opts.bots ? `Play solo against ${opts.bots} bot hive${opts.bots > 1 ? "s" : ""}` : "Play solo (no bots: practise)";
 }
 function saveOpts() { store.set("bb-bots", opts.bots); store.set("bb-skill", opts.skill); store.set("bb-match", opts.match); store.set("bb-auto", opts.auto ? "1" : "0"); store.set("bb-secs", opts.secs); paintOpts(); }
 $("hbminus").onclick = () => { opts.bots = Math.max(0, opts.bots - 1); saveOpts(); };
@@ -323,7 +344,8 @@ async function start(mode, count = 1) {
   seats = [first];
   // two on one screen: one bee each, one round (the server enforces it too)
   openSeat(first, { t: "hello", mode, name, code, dev: DEV, auto: opts.auto, bots: opts.bots, skill: opts.skill,
-    match: count > 1 ? "single" : opts.match, shared: count > 1, secs: opts.secs });
+    match: opts.match, shared: count > 1, secs: opts.secs, aspect: screenShape(count) });
+  goLandscape(count);
 }
 // once the first seat has a garden, the friends on this device join it
 function addFriends(code, n) {
@@ -344,7 +366,15 @@ $("lskill").addEventListener("click", e => { const v = e.target.dataset.v; if (v
 $("lmatch").addEventListener("click", e => { const v = e.target.dataset.v; if (v) send(seats[0], { t: "match", v }); });
 $("lsecs").addEventListener("click", e => { const v = +e.target.dataset.v; if (v) send(seats[0], { t: "secs", v }); });
 $("lauto").onclick = () => { opts.auto = !opts.auto; saveOpts(); seats.forEach(s => send(s, { t: "auto", v: opts.auto })); togPaint("lauto", opts.auto); };
-$("start").onclick = () => send(seats[0], { t: "start" });
+$("start").onclick = () => { goLandscape(seats.length); send(seats[0], { t: "start" }); };
+// Home: leave this garden (the seat is given up) and go back to the start screen
+$("rhome").onclick = () => {
+  closeAll(); store.del("bb-seats"); lobby = null;
+  history.replaceState(null, "", location.pathname);
+  $("results").style.display = "none"; $("game").classList.remove("turned", "watching"); $("err").textContent = "";
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  show("home");
+};
 $("helpbtn").onclick = () => $("help").classList.toggle("on");
 $("helpclose").onclick = () => $("help").classList.remove("on");
 ["helpbtn", "helpclose", "help"].forEach(id => $(id).addEventListener("pointerdown", e => e.stopPropagation()));
@@ -374,17 +404,17 @@ function onMessage(seat, m) {
       break;
     case "go":
       info = new Map(m.bees.map(b => [b.id, { slot: b.slot, name: b.name }]));
+      (m.seats || []).forEach(s => info.set("s" + s.id, { slot: s.slot, name: s.name }));   // bees that hatch later
       (m.seats || m.bees).forEach(b => { const s = seats.find(x => x.id === b.id); if (s) { s.slot = b.slot; s.name = b.name; } });
-      lvl = m.level || { idx: 0, name: "Meadow", workers: 1, of: 1, match: "single" };
+      lvl = m.level || { idx: 0, name: "", kind: "fixed", bees: 1, of: 1, match: "single" };
+      watching = !!(m.seats || []).find(s => s.id === seats[0].id && s.out);
       Garden.setup({ ...m }); Smooth.reset();
       $("mydot").style.background = PC[seats[0].slot]; $("myname").textContent = seats[0].name || "You";
       $("results").style.display = "none";
-      show("game"); resize(); buildEdges();
-      if (m.in > 0) {
-        const sub = lvl.of > 1 ? `Level ${lvl.idx + 1} of ${lvl.of}: ${lvl.name}. ` + (lvl.workers > 1 ? `You have ${lvl.workers} bees. Tap a flower and your nearest free bee goes.` : "One bee each.") : "";
-        countdown(m.in, sub);
-        if (lvl.idx === 0) { $("help").classList.add("on"); setTimeout(() => $("help").classList.remove("on"), 9000); }
-      }
+      show("game"); layout(); buildEdges();
+      $("game").classList.toggle("watching", watching);
+      hintUntil = performance.now() + 7000;            // the hint shows for the first few seconds only
+      if (m.in > 0) countdown(m.in, roundIntro());
       break;
     case "s":
       Smooth.push(m);
@@ -400,7 +430,7 @@ const seatIds = () => seats.filter(s => s.id != null).map(s => s.id);
 const beesOf = (S, seat) => S ? S.b.filter(b => b.seat === seat.id) : [];
 const webbed = S => new Set((S.p || []).filter(p => p[0] === "s").map(p => p[1]));
 function isFree(S, b, webs) {
-  if (lvl.workers === 1) return b.st === 0 || b.st === 1;
+  if (S.b.filter(x => x.seat === b.seat).length === 1) return b.st === 0 || b.st === 1;
   return b.st === 0 && (S.o[b.f] === b.slot || webs.has(b.f));
 }
 // the bee a tap on flower f would send: the server picks the nearest free one, so does the preview
@@ -423,23 +453,24 @@ function renderLobby() {
   const here = new Set(seatIds());
   const cells = lobby.bees.map(b => `<div class="chip"><i style="background:${PC[b.slot]}"></i><span>${esc(b.name)}</span><em>${here.has(b.id) ? (seats.length > 1 ? "this device" : "you") : b.id === lobby.host ? "host" : ""}</em></div>`);
   const isHost = seats[0] && lobby.host === seats[0].id;
-  for (let i = 0; i < Math.min(lobby.bots, 8 - lobby.bees.length); i++) cells.push(`<div class="chip"><i style="background:#cfd8c8"></i><span>Bot bee</span><em>${(SKILLS[lobby.skill] || "").toLowerCase()} bot</em></div>`);
+  for (let i = 0; i < Math.min(lobby.bots, 8 - lobby.bees.length); i++) cells.push(`<div class="chip"><i style="background:#cfd8c8"></i><span>Bot hive</span><em>${(SKILLS[lobby.skill] || "").toLowerCase()} bot</em></div>`);
   while (cells.length < 2) cells.push(`<div class="chip empty"><span>waiting for a bee…</span></div>`);
   $("lbees").innerHTML = cells.join("");
   $("bots").textContent = lobby.bots;
   segPaint("lskill", lobby.skill); segPaint("lmatch", lobby.match); segPaint("lsecs", lobby.secs);
   $("lskill").style.opacity = lobby.bots ? 1 : .5;
   $("lmatch").style.display = lobby.canLevels ? "flex" : "none";
-  const levels = lobby.match === "levels";
-  $("llvls").style.display = levels ? "block" : "none";
-  $("lset").textContent = (lobby.bots ? `${lobby.bots} ${(SKILLS[lobby.skill] || "").toLowerCase()} bot bee${lobby.bots > 1 ? "s" : ""}` : "No bots")
-    + " · " + (levels ? "3 levels" : "1 round") + (lobby.secs ? ` of ${mins(lobby.secs)}` + (levels ? " each" : "") : "") + (lobby.shared ? " · two on one screen: one bee each" : "");
+  const levels = lobby.match === "rounds";
+  $("llvls").innerHTML = levels ? "<b>3 rounds:</b> round 1, 2 bees each; round 2, 3 bees each; then the <b>final</b> for the best 4 hives, with 3 bees and a 4th to unlock by holding 6 flowers. Honey adds up over the rounds."
+    : "<b>One round:</b> every hive has 3 bees, and a 4th to unlock by holding 6 flowers.";
+  $("lset").textContent = (lobby.bots ? `${lobby.bots} ${(SKILLS[lobby.skill] || "").toLowerCase()} bot hive${lobby.bots > 1 ? "s" : ""}` : "No bots")
+    + " · " + (levels ? "3 rounds" : "1 round") + (lobby.secs ? ` of ${mins(lobby.secs)}` + (levels ? " each" : "") : "") + (lobby.shared ? " · two on one screen" : "");
   const mine = lobby.bees.find(b => b.id === (seats[0] && seats[0].id));
   togPaint("lauto", mine ? mine.auto !== false : opts.auto);
   $("hostbox").style.display = isHost ? "grid" : "none";
   $("start").style.display = isHost ? "block" : "none";
   $("waitmsg").style.display = isHost ? "none" : "block";
-  $("start").textContent = levels ? "Start the match (3 levels)" : "Start the round";
+  $("start").textContent = levels ? "Start the match (3 rounds)" : "Start the round";
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
@@ -471,8 +502,10 @@ function showResults(m) {
     : !multi ? (mineTop ? "Your hive wins!" : `${top.name} wins!`)
     : !m.final ? `${lv.name} done: ${mineTop ? "you lead" : top.name + " leads"}`
     : mineTop ? "You win the match!" : `${top.name} wins the match!`;
-  $("rlist").innerHTML = rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)}${here.has(r.slot) && one ? " (you)" : ""}</span><b>${multi ? r.total : r.honey}</b><small>${multi ? `${r.honey} honey this level · ` : ""}${r.flowers} flowers · biggest patch ${r.patch} (+${r.rate}/s at the end) · ${r.knocks || 0} knockouts · ${r.faints} faints</small></div>`).join("");
-  $("rnext").textContent = m.final === false ? `Next: ${m.next}, ${m.nextWorkers} bees each in a bigger garden. Starting in about ${m.in} s…` : multi ? "Total honey over all three levels. Back to the lobby in a moment…" : "Back to the lobby in a moment…";
+  $("rlist").innerHTML = rank.map((r, i) => `<div><span>${i + 1}</span><i style="background:${PC[r.slot]}"></i><span>${esc(r.name)}${here.has(r.slot) && one ? " (you)" : ""}</span><b>${multi ? r.total : r.honey}</b><small>${r.out ? "watched the final · " : multi ? `${r.honey} honey this round · ` : ""}${r.flowers} flowers · biggest patch ${r.patch} (+${r.rate}/s at the end) · ${r.knocks || 0} knockouts · ${r.faints} faints</small></div>`).join("");
+  $("rnext").textContent = m.final === false
+    ? (m.nextTop ? `Next: the final, for the best ${m.nextTop} hives: 3 bees each and a 4th at 6 flowers. Starting in about ${m.in} s…` : `Next: ${m.next}, ${m.nextWorkers} bees each. Starting in about ${m.in} s…`)
+    : multi ? "Total honey over the three rounds. Back to the lobby in a moment…" : "Back to the lobby in a moment…";
   $("results").style.display = "flex";
 }
 
@@ -488,7 +521,7 @@ function aims() {
   const out = [];
   seats.forEach(seat => {
     const b = beesOf(lastS, seat)[0];
-    if (seat.drag && seat.aim >= 0 && b) out.push({ id: b.id, f: seat.aim, mode: "hover" });
+    if (seat.drag && seat.aim >= 0 && b) out.push({ id: seat.dragBee ?? b.id, f: seat.aim, mode: "hover" });
     if (seat.pick != null && seat.pick >= 0 && seat.pickBee != null) out.push({ id: seat.pickBee, f: seat.pick, mode: "pick" });
   });
   if (!shared() && hover >= 0 && seats[0]) { const b = nearestFree(lastS, seats[0], hover); if (b) out.push({ id: b.id, f: hover, mode: "hover" }); }
@@ -496,38 +529,38 @@ function aims() {
 }
 const cvEl = $("cv");
 const swipes = new Map();                         // finger -> the seat it is steering
-function seatAt(px, py) {
+// the bee under a finger (or circling the flower under it): that bee is the one the swipe sends
+function beeUnder(px, py) {
   const S = lastS; if (!S) return null;
   const here = S.b.filter(b => seats.some(s => s.id === b.seat) && (b.st === 0 || b.st === 1));
-  const b = Garden.beeAt(px, py, here);
-  if (b) return seats.find(s => s.id === b.seat);
-  const f = Garden.flowerAt(px, py);               // or the flower your bee is circling
-  const on = here.find(x => x.st === 0 && x.f === f);
-  return on ? seats.find(s => s.id === on.seat) : null;
+  const f = Garden.flowerAt(px, py);
+  return Garden.beeAt(px, py, here) || here.find(x => x.st === 0 && x.f === f) || null;
 }
+// with the game turned sideways on an upright phone, screen points are turned back into game points
+const pt = e => turned ? [e.clientY, innerWidth - e.clientX] : [e.clientX, e.clientY];
 cvEl.addEventListener("pointerdown", e => {
   e.preventDefault();
-  const f = Garden.flowerAt(e.clientX, e.clientY);
+  const [px, py] = pt(e), f = Garden.flowerAt(px, py);
   if (shared()) {
-    const seat = seatAt(e.clientX, e.clientY);
-    if (!seat || seat.drag) { if (f >= 0) toast("Swipe from your own bee to a flower"); return; }
+    const bee = beeUnder(px, py), seat = bee && seats.find(s => s.id === bee.seat);
+    if (!seat || seat.drag) { if (f >= 0) toast("Swipe from one of your own bees to a flower"); return; }
     try { cvEl.setPointerCapture(e.pointerId); } catch (err) {}
-    swipes.set(e.pointerId, seat); seat.drag = true; seat.aim = -1; seat.from = f;
+    swipes.set(e.pointerId, seat); seat.drag = true; seat.aim = -1; seat.from = f; seat.dragBee = bee.id;
     if (seat.el) seat.el.classList.add("down");
     return;
   }
   if (f >= 0) { fly(seats[0], f); hover = -1; }
 });
 cvEl.addEventListener("pointermove", e => {
-  const seat = swipes.get(e.pointerId);
-  if (seat) { const f = Garden.flowerAt(e.clientX, e.clientY); seat.aim = f === seat.from ? -1 : f; return; }
-  if (e.pointerType === "mouse" && !shared()) hover = Garden.flowerAt(e.clientX, e.clientY);
+  const seat = swipes.get(e.pointerId), [px, py] = pt(e);
+  if (seat) { const f = Garden.flowerAt(px, py); seat.aim = f === seat.from ? -1 : f; return; }
+  if (e.pointerType === "mouse" && !shared()) hover = Garden.flowerAt(px, py);
 });
 const endSwipe = (e, go) => {
   const seat = swipes.get(e.pointerId); if (!seat) return;
   swipes.delete(e.pointerId);
-  if (go) fly(seat, seat.aim);
-  seat.drag = false; seat.aim = -1; if (seat.el) seat.el.classList.remove("down");
+  if (go) fly(seat, seat.aim, seat.dragBee);
+  seat.drag = false; seat.aim = -1; seat.dragBee = null; if (seat.el) seat.el.classList.remove("down");
 };
 cvEl.addEventListener("pointerup", e => endSwipe(e, true));
 cvEl.addEventListener("pointercancel", e => endSwipe(e, false));
@@ -579,30 +612,53 @@ function buildEdges() {
     ["left", "right", "top", "bottom"].forEach(k => { if (sp[k]) b.style[k] = sp[k]; });
     b.style.transform = `${sp.tx || ""} ${sp.flip ? "rotate(180deg)" : ""}`.trim() || "none";
     b.setAttribute("aria-label", `${seat.name || "Player " + (i + 1)}: drag onto a flower`);
-    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">SWIPE FROM YOUR BEE</span><div class="hp"><div></div></div><span class="st">0 honey</span><span class="note"></span><button type="button" class="stg">STING</button>`;
+    b.innerHTML = `<span class="nm"><i style="width:12px;height:12px;border-radius:50%;background:${col}"></i><span>${esc(seat.name || "Player " + (i + 1))}</span></span><span class="act">SWIPE FROM YOUR BEE</span><div class="hps"></div><span class="st">0 honey</span><span class="note"></span><button type="button" class="stg">STING</button>`;
     const chip = b.querySelector(".stg");
     chip.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); sting(seat); });
     seat.el = b; host.appendChild(b);
   });
 }
-addEventListener("resize", () => { if ($("game").classList.contains("on")) buildEdges(); });
+addEventListener("resize", () => { if ($("game").classList.contains("on")) { layout(); buildEdges(); } });
+
+// Phones play sideways: on the way into a game the page asks for full screen held in landscape
+// (Android); if the phone stays upright anyway, the whole game is drawn turned a quarter turn,
+// so it fills the screen the long way and the phone is simply held sideways.
+let turned = false;
+// the shape the garden is grown in: this screen's, the long way (a phone is played sideways)
+const screenShape = (players = 1) => touchy() && players < 2 ? Math.max(innerWidth, innerHeight) / Math.min(innerWidth, innerHeight)
+  : players > 1 ? 1.6 : innerWidth / innerHeight;
+function goLandscape(players = 1) {
+  if (!touchy() || players > 1) return;            // two on one screen sit at either end: keep it upright
+  const d = document.documentElement;
+  try { const p = d.requestFullscreen && !document.fullscreenElement ? d.requestFullscreen({ navigationUI: "hide" }) : null;
+    Promise.resolve(p).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape")).catch(() => {}); } catch (e) {}
+}
+function layout() {
+  turned = touchy() && !shared() && innerHeight > innerWidth;
+  const g = $("game");
+  g.classList.toggle("turned", turned);
+  g.style.width = turned ? innerHeight + "px" : ""; g.style.height = turned ? innerWidth + "px" : "";
+  resize();
+  g.classList.toggle("short", ch < 520);
+}
 
 // ---- render
 const cv = $("cv"), ctx = cv.getContext("2d");
 let DPR = 1, cw = 0, ch = 0;
-function resize() { DPR = Math.min(2, devicePixelRatio || 1); cw = innerWidth; ch = innerHeight; cv.width = cw * DPR; cv.height = ch * DPR; }
+// phones: 1.5x is sharp enough and paints 44% fewer pixels than 2x
+function resize() { DPR = Math.min(matchMedia("(pointer: coarse)").matches ? 1.5 : 2, devicePixelRatio || 1); cw = turned ? innerHeight : innerWidth; ch = turned ? innerWidth : innerHeight; cv.width = cw * DPR; cv.height = ch * DPR; }
 addEventListener("resize", resize);
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   if ($("game").classList.contains("on") && Garden.world && seats[0]) {
-    const S = Smooth.sample(Garden.world, info) || { b: [], o: Garden.world.flowers.map(() => null), p: [] };
+    const S = Smooth.sample(Garden.world, info) || { b: [], o: [], p: [] };
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, cw, ch);
     const ids = new Set(seatIds()), mine = S.b.filter(b => ids.has(b.seat)), webs = webbed(S);
-    const free = lvl.workers > 1 ? new Set(mine.filter(b => isFree(S, b, webs)).map(b => b.id)) : null;
+    const free = mine.length > 1 ? new Set(mine.filter(b => isFree(S, b, webs)).map(b => b.id)) : null;
     const ready = new Set(S.b.filter(b => isFree(S, b, webs) && !(b.stingCd > 0)).map(b => b.id));   // bees that could take a sting
     lastS = S;
-    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: true, dt, rotate: true, aims: aims(), free, backdrop: $("bgcv"), dpr: DPR, ready, reachSlots: seats.map(s => s.slot) });
+    Garden.draw(ctx, cw, ch, S, now / 1000, { mine: mine.map(b => b.id), mineSlots: seats.map(s => s.slot), names: false, dt, rotate: !turned, margin: touchy() ? 18 : 60, ambient: !touchy(), aims: aims(), free, backdrop: $("bgcv"), layer: $("flcv"), dpr: DPR, ready, reachSlots: seats.map(s => s.slot) });
     hud(S);
   }
   requestAnimationFrame(frame);
@@ -639,40 +695,68 @@ function hpBars(el, bees) {
   if (el.children.length !== bees.length) el.innerHTML = bees.map(() => `<div class="hp"><div></div></div>`).join("");
   bees.forEach((b, i) => { const f = Math.max(0, b.hp) / 100, bar = el.children[i].firstChild; bar.style.width = (f * 100) + "%"; bar.style.background = hpColor(f); });
 }
+// write to the page only when something changed: rewriting the cards every frame costs phones dearly
+const put = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+const putText = (el, txt) => { if (el._t !== txt) { el._t = txt; el.textContent = txt; } };
+let hintUntil = 0;
+// what the countdown says about this round's bees
+function roundIntro() {
+  const round = lvl.of > 1 ? `${lvl.name} (round ${lvl.idx + 1} of ${lvl.of}). ` : "";
+  if (watching) return round + `The best ${lvl.top || 4} hives play the final: you are watching this one.`;
+  if (lvl.kind === "grow") return "Your hive grows with your garden: a 2nd bee at 3 flowers, a 3rd at 5, a 4th at 7.";
+  return round + `${lvl.bees} bees each` + (lvl.bonus ? `, and a ${lvl.bees + 1}th at ${lvl.bonus} flowers.` : ".");
+}
+// progress to the next bee, from the flowers you hold
+function growLine(flowers, have) {
+  if (lvl.kind === "grow") {
+    const steps = lvl.steps || [0, 3, 5, 7];
+    if (have >= steps.length) return "Full hive: 4 bees";
+    const need = steps[have];
+    return flowers >= need ? `${ordinal(have + 1)} bee hatching…` : `${flowers} of ${need} flowers for your ${ordinal(have + 1)} bee`;
+  }
+  if (lvl.bonus) return have > lvl.bees ? `${ordinal(have)} bee unlocked: keep ${lvl.bonus} flowers` : `${flowers} of ${lvl.bonus} flowers for your ${ordinal(lvl.bees + 1)} bee`;
+  return "";
+}
+const ordinal = n => ({ 1: "1st", 2: "2nd", 3: "3rd" })[n] || n + "th";
 function hud(S) {
   const stats = Garden.stats(S.o), webs = webbed(S);
   const me = seats[0], mine = beesOf(S, me), mb = mine[0];
   const run = b => b.score + (lvl.of > 1 ? b.total : 0);       // honey so far this match
-  if (mb && !shared()) {
-    hpBars($("hps"), mine);
-    const freeN = mine.filter(b => isFree(S, b, webs)).length;
-    $("free").style.setProperty("--c", PC[me.slot]);
-    $("free").innerHTML = mine.length > 1 ? mine.map(b => `<i class="${isFree(S, b, webs) ? "ok" : b.st >= 2 ? "down" : ""}${b.stingCd > 0 ? "" : " sr"}" title="${b.stingCd > 0 ? "sting recharging" : "sting ready"}"></i>`).join("") + `<span>${freeN} of ${mine.length} bees free</span>` : "";
-    $("honey").textContent = mb.score + " honey" + (lvl.of > 1 ? ` · match ${run(mb)}` : "");
-    const st = stats.get(me.slot);
-    const sum = st.patches.length ? st.patches.map(n => n > 1 ? `${n}×${n}` : "1").join(" + ") : "no flowers yet";
-    $("mystats").innerHTML = `<b>${st.flowers}</b> flower${st.flowers === 1 ? "" : "s"} · biggest patch <b>${st.biggest}</b><br><span class="rate">+${st.rate} honey/s</span> = ${sum}`;
-    paintSting($("stingbtn"), mine, true);
-    $("hint").textContent = mine.length > 1
-      ? (freeN ? (touchy() ? "Tap a flower: your nearest free bee goes" : "Click a flower: your nearest free bee goes (or Space to pick)") : "All your bees are busy pollinating…")
-      : mb.st === 2 ? "Dizzy… back in a moment" : mb.st === 3 ? "Fainted… back in a moment" : touchy() ? "Tap a flower to fly there" : "Click a flower to fly there (or tap Space to pick)";
+  if (!shared()) {
+    const st = stats.get(me.slot) || { flowers: 0, patches: [], biggest: 0, rate: 0 };
+    if (mb) {
+      hpBars($("hps"), mine);
+      const freeN = mine.filter(b => isFree(S, b, webs)).length;
+      $("free").style.setProperty("--c", PC[me.slot]);
+      put($("free"), mine.length > 1 ? mine.map(b => `<i class="${isFree(S, b, webs) ? "ok" : b.st >= 2 ? "down" : ""}${b.stingCd > 0 ? "" : " sr"}"></i>`).join("") + `<span>${freeN} of ${mine.length} free</span>` : "");
+      putText($("honey"), mb.score + " honey" + (lvl.of > 1 ? ` · match ${run(mb)}` : ""));
+      putText($("grow"), growLine(st.flowers, mine.length));
+      const sum = st.patches.length ? st.patches.map(n => n > 1 ? `${n}×${n}` : "1").join(" + ") : "no flowers yet";
+      put($("mystats"), `<span class="rate">+${st.rate} honey/s</span> = ${sum}`);
+      paintSting($("stingbtn"), mine, true);
+      // the hint: the first few seconds, and whenever something needs saying
+      const msg = mine.length > 1 && !freeN ? "All your bees are busy pollinating…"
+        : mine.length === 1 && mb.st === 2 ? "Dizzy… back in a moment" : mine.length === 1 && mb.st === 3 ? "Fainted… back in a moment"
+        : performance.now() < hintUntil ? (mine.length > 1 ? "Tap a flower: your nearest free bee goes" : touchy() ? "Tap a flower to fly there" : "Click a flower to fly there (or Space to pick)") : "";
+      putText($("hint"), msg); $("hint").classList.toggle("off", !msg);
+    } else if (watching) { putText($("hint"), `Watching the final: the best ${lvl.top || 4} hives play it`); $("hint").classList.remove("off"); }
   }
   if (shared()) seats.forEach(seat => {
-    const b = beesOf(S, seat)[0]; if (!b || !seat.el) return;
-    const f = Math.max(0, b.hp) / 100, st = stats.get(seat.slot) || { flowers: 0, rate: 0 };
-    seat.el.querySelector(".act").textContent = seat.drag ? (seat.aim >= 0 ? "LIFT TO FLY THERE" : "SLIDE TO A FLOWER") : action(b.st);
-    const bar = seat.el.querySelector(".hp div"); bar.style.width = (f * 100) + "%"; bar.style.background = hpColor(f);
-    paintSting(seat.el.querySelector(".stg"), beesOf(S, seat), false);
-    seat.el.querySelector(".st").textContent = `${b.score} honey · +${st.rate}/s`;
+    const bs = beesOf(S, seat), b = bs[0]; if (!b || !seat.el) return;
+    const st = stats.get(seat.slot) || { flowers: 0, rate: 0 };
+    putText(seat.el.querySelector(".act"), seat.drag ? (seat.aim >= 0 ? "LIFT TO FLY THERE" : "SLIDE TO A FLOWER") : bs.length > 1 ? `${bs.filter(x => isFree(S, x, webs)).length} OF ${bs.length} BEES FREE` : action(b.st));
+    hpBars(seat.el.querySelector(".hps"), bs);
+    paintSting(seat.el.querySelector(".stg"), bs, false);
+    putText(seat.el.querySelector(".st"), `${b.score} honey · +${st.rate}/s` + (lvl.of > 1 ? ` · match ${run(b)}` : ""));
   });
-  const left = S.left ?? 0; $("clockt").textContent = Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");
-  $("clockl").textContent = lvl.of > 1 ? `${lvl.name} · ${lvl.idx + 1}/${lvl.of}` : "";
+  const left = S.left ?? 0; putText($("clockt"), Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0"));
+  putText($("clockl"), lvl.of > 1 ? `${lvl.name} · ${lvl.idx + 1}/${lvl.of}` : "");
   $("clock").classList.toggle("low", left < 15 && S.ph === "play");
   if (!shared()) {
-    // one row per player, however many bees they have
+    // one row per hive, however many bees it has
     const bySeat = new Map(); S.b.forEach(b => { if (!bySeat.has(b.seat)) bySeat.set(b.seat, b); });
     const ranked = [...bySeat.values()].sort((a, b) => run(b) - run(a));
-    $("board").innerHTML = `<div class="hd"><span>bee</span><em>flowers · rate</em><b style="color:inherit">${lvl.of > 1 ? "match" : "honey"}</b></div>` + ranked.map(b => { const st = stats.get(b.slot) || { flowers: 0, rate: 0 }; return `<div class="${b.seat === me.id ? "mine" : ""}"><i style="background:${PC[b.slot]}"></i><span>${esc(b.name || "")}</span><em>${st.flowers} · +${st.rate}/s</em><b>${run(b)}</b></div>`; }).join("");
+    put($("board"), ranked.map(b => { const st = stats.get(b.slot) || { flowers: 0, rate: 0 }; return `<div class="${b.seat === me.id ? "mine" : ""}"><i style="background:${PC[b.slot]}"></i><span>${esc(b.name || "")}</span><em>${st.flowers}✿ +${st.rate}/s</em><b>${run(b)}</b></div>`; }).join(""));
   }
 }
 

@@ -6,8 +6,8 @@
  * very same messages they would send the Python server. Keep the two in step:
  * a rule changed in one belongs in the other.
  *
- * A seat is a player (a phone or a bot); a worker is one bee in the garden.
- * A player has one bee in the Meadow and more in the later levels of a match.
+ * A seat is a player (a phone or a bot): a hive; a worker is one bee in the garden.
+ * Solo hives grow with their flowers; with friends each round has a fixed number of bees.
  *
  * const g = new BloomSim.Host(code)   // the room
  * g.connect(link)                      // link = { send(obj) }; returns { message(obj), close() }
@@ -16,22 +16,36 @@
 
 const BloomSim = (() => {
   const TICK = 1 / 60, SEND_EVERY = 3;
-  const ROUND_SECONDS = 120, ROUND_CHOICES = [60, 120, 180, 300], RESULTS_SECONDS = 15, BETWEEN_LEVELS = 10, COUNTDOWN = 3, MAX_SEATS = 8, RESUME_GRACE = 120;
+  const ROUND_SECONDS = 120, ROUND_CHOICES = [60, 120, 180, 300], RESULTS_SECONDS = 15, BETWEEN_ROUNDS = 10, COUNTDOWN = 3, MAX_SEATS = 8, RESUME_GRACE = 120;
   const NAMES = ["Red", "Blue", "Gold", "Violet", "Orange", "Pink", "Teal", "Brown"];
-  // levels: how many bees each player commands
-  const LEVELS = [{ name: "Meadow", workers: 1 }, { name: "Orchard", workers: 2 }, { name: "Hive", workers: 3 }];
+  // how many bees a hive has (see server.py): solo hives grow with their flowers, friends' rounds are fixed
+  const GROW_STEPS = [0, 3, 5, 7];
+  const ROUNDS = [{ name: "Round 1", bees: 2 }, { name: "Round 2", bees: 3 }, { name: "Final", bees: 3, bonus: 6, top: 4 }];
+  const SHRINK_GRACE = 8, MAX_BEES = 4;
+  // the garden grows during a round
+  const START_SHARE = .65, SPROUT_FIRST = 10;
   // bot skill: pause before moving on (s), chance of a random pick, of not checking the flytrap path, of stinging
   const SKILL = {
     easy: { wait: [1.6, 3.2], random: .40, careless: .25, sting: 0 },
     normal: { wait: [.9, 1.8], random: .15, careless: 0, sting: .4 },
     hard: { wait: [.4, 1.0], random: 0, careless: 0, sting: 1 },
   };
+  const SKILL_ORDER = ["easy", "normal", "hard"];
+  // a bot skill between the named ones: 0 = easy, 1 = normal, 2 = hard (solo bots move along it)
+  function skillAt(f) {
+    f = Math.max(0, Math.min(2, f));
+    const i = Math.floor(f), a = SKILL[SKILL_ORDER[i]], b = SKILL[SKILL_ORDER[Math.min(2, i + 1)]], u = f - i, mix = (x, y) => x + (y - x) * u;
+    return { wait: [mix(a.wait[0], b.wait[0]), mix(a.wait[1], b.wait[1])], random: mix(a.random, b.random), careless: mix(a.careless, b.careless), sting: mix(a.sting, b.sting) };
+  }
+  const ordinal = n => ({ 1: "1st", 2: "2nd", 3: "3rd" })[n] || n + "th";
   const OMEGA0 = 2.0, FLY_V = 320, ORBIT_GAP = 26, BEE_R = 9;
   const HP_MAX = 100, HEAL_PER_S = 7, FAINT_SECONDS = 3, FAINT_HONEY_LOSS = .15, SAFE_SECONDS = 1.5, DIZZY_SECONDS = 1.6;
   const BUMP_DMG = 10, TRAP_DMG = 35, DRAGON_DMG = 25, BIRD_DMG = 45, WEB_DPS = 18, TRAP_R = 24;
   // sting dash and fortified patches (see server.py)
   const STING_DMG = 35, STING_CD = 3, STING_SPEED = 1.45, STING_REACH = BEE_R * 2.6, STING_DIZZY = 1, BOUNTY_WINDOW = 4;
   const FORTIFY_SIZE = 4, FORTIFY_LOOPS = 3;
+  // teamwork: each extra bee of yours circling a flower you are taking adds this much speed
+  const CO_POLLEN = .8;
   const PRED_FIRST = 12, PRED_GAP = [7, 13], DRAGON_SPEED = 380, BIRD_WARN = 1.8, BIRD_R = 75, WEB_SECONDS = 10;
   const SIZES = [[2, 1240, 780, 10], [4, 1440, 880, 14], [6, 1640, 980, 18], [8, 1840, 1080, 22],
     [12, 2040, 1180, 28], [16, 2240, 1300, 34], [24, 2540, 1460, 44]];
@@ -45,8 +59,14 @@ const BloomSim = (() => {
   const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, "0")).join("");
 
   // ---------------------------------------------------------------- world
-  function makeWorld(nBees, seed) {
-    const R = seeded(seed), [, W, H, count] = SIZES.find(s => nBees <= s[0]) || SIZES[SIZES.length - 1];
+  function makeWorld(nBees, seed, aspect) {
+    const R = seeded(seed);
+    let [, W, H, count] = SIZES.find(s => nBees <= s[0]) || SIZES[SIZES.length - 1];
+    if (aspect) {
+      // the same lawn area in the shape of the host's screen, so a phone held sideways is filled
+      const a = Math.max(1.3, Math.min(2.2, aspect)), area = W * H;
+      W = Math.round(Math.sqrt(area * a) / 10) * 10; H = Math.round(Math.sqrt(area / a) / 10) * 10;
+    }
     const cx = W / 2, cy = H / 2, flowers = [];
     let dmin = Math.sqrt(W * H / count) * .66, fails = 0;
     while (flowers.length < count) {
@@ -57,7 +77,9 @@ const BloomSim = (() => {
       } else if (++fails > 400) { dmin *= .96; fails = 0; }
     }
     const nn = flowers.map(a => Math.min(...flowers.filter(b => b !== a).map(b => hyp(a.x - b.x, a.y - b.y)))).sort((a, b) => a - b);
-    return { W, H, seed, trap: [cx, cy], flowers, link: r1(nn[Math.floor(nn.length / 2)] * 1.45) };
+    // most flowers are open at the start; the rest (the gaps the spacing filled last) sprout during the round
+    const nOpen = Math.max(Math.min(count, 6), Math.round(count * START_SHARE));
+    return { W, H, seed, trap: [cx, cy], flowers: flowers.slice(0, nOpen), dormant: flowers.slice(nOpen), link: r1(nn[Math.floor(nn.length / 2)] * 1.45) };
   }
   function spreadStarts(wd, n) {
     const fl = wd.flowers, [cx, cy] = wd.trap;
@@ -78,6 +100,7 @@ const BloomSim = (() => {
       this.world = null; this.preds = []; this.fxq = []; this.toast = null; this.tEnd = 0; this.tPhase = 0; this.nextPred = 0;
       this.predId = 0; this.tickN = 0; this.fort = new Set(); this.solo = false; this.shared = false;
       this.botsWanted = 0; this.skill = "easy"; this.secs = ROUND_SECONDS; this.match = "single"; this.level = 0; this.lastEnd = null; this.nextId = 1;
+      this.skillF = 0; this.nextSprout = 0; this.sproutGap = 10; this.nextAdapt = 0; this.sproutTold = false; this.aspect = null;
       let last = performance.now() / 1000, acc = 0;
       this.timer = setInterval(() => {
         const now = performance.now() / 1000; acc += Math.min(.25, now - last); last = now;
@@ -89,17 +112,23 @@ const BloomSim = (() => {
     now() { return performance.now() / 1000; }
 
     newSeat(name, bot = false) {
-      const s = { id: this.nextId++, name: clean(name), link: null, bot, gone: null, dev: "", key: newKey(), slot: 0, total: 0, auto: !bot };   // auto: a flight at a rival becomes a dash by itself
+      const s = { id: this.nextId++, name: clean(name), link: null, bot, gone: null, dev: "", key: newKey(), slot: 0, total: 0, out: false, auto: !bot };   // auto: a flight at a rival becomes a dash by itself
       this.resetSeat(s); return s;
     }
-    resetSeat(s) { Object.assign(s, { score: 0, faints: 0, blooms: 0, knocks: 0, stingArmed: false }); }
+    resetSeat(s) { Object.assign(s, { score: 0, faints: 0, blooms: 0, knocks: 0, stingArmed: false, shrinkAt: null }); }
     newWorker(seat, k) {
       return { id: seat.id * 10 + k, seat, slot: seat.slot, state: "orbit", f: 0, ang: 0, rad: 40, dir: 1, v: OMEGA0, prog: 0,
         x: 0, y: 0, vx: 0, vy: 0, timer: 0, hp: HP_MAX, safe: 0, hitCd: 0, target: null, wait: 1, sting: false, stingCd: 0, lastHit: null };   // stingCd: each bee recharges its own sting
     }
     freeSlot() { const used = new Set([...this.seats.values()].map(s => s.slot)); for (let i = 0; i < MAX_SEATS; i++) if (!used.has(i)) return i; }
     label(s) { return s.name || NAMES[s.slot] + " bee"; }
-    perSeat() { return LEVELS[this.level].workers; }
+    // this round's bee rule: grow with your flowers (solo) or a fixed number (with friends)
+    rule() {
+      if (this.solo) return { kind: "grow", name: "Solo", bees: 1, steps: GROW_STEPS };
+      if (this.match === "rounds") return { ...ROUNDS[this.level], kind: "fixed" };
+      const r = { ...ROUNDS[ROUNDS.length - 1], kind: "fixed", name: "One round" }; delete r.top; return r;
+    }
+    beesOf(s) { return this.workers.filter(w => w.seat === s); }
     devices() { return new Set([...this.seats.values()].filter(s => !s.bot).map(s => s.dev || s.id)).size; }
     send(s, o) { if (s.link) s.link.send(o); }
     note(s, x) { this.send(s, { t: "note", x }); }
@@ -107,18 +136,20 @@ const BloomSim = (() => {
     sorted() { return [...this.seats.values()].sort((a, b) => a.slot - b.slot); }
 
     levelInfo() {
-      const lv = LEVELS[this.level];
-      return { idx: this.level, name: lv.name, workers: lv.workers, of: this.match === "levels" ? LEVELS.length : 1, match: this.match };
+      const r = this.rule();
+      return { idx: this.level, name: r.name, kind: r.kind, bees: r.bees, bonus: r.bonus || null, steps: r.steps || null, top: r.top || null, max: MAX_BEES,
+        of: this.match === "rounds" && !this.solo ? ROUNDS.length : 1, match: this.match };
     }
     lobbyMsg() {
       return { t: "lobby", code: this.code, host: this.host, solo: this.solo, shared: this.shared, bots: this.botsWanted, skill: this.skill, secs: this.secs,
-        match: this.match, phase: this.phase, devices: this.devices(), canLevels: !this.shared,
+        match: this.match, phase: this.phase, devices: this.devices(), canLevels: true,
         bees: this.sorted().filter(s => !s.bot).map(s => ({ id: s.id, slot: s.slot, name: this.label(s), bot: s.bot, away: s.gone != null, auto: s.auto })) };
     }
     worldMsg() {
       const wd = this.world;
-      return { W: wd.W, H: wd.H, seed: wd.seed, link: wd.link, trap: wd.trap, flowers: wd.flowers.map(f => [f.x, f.y, f.r]),
-        seats: this.sorted().map(s => ({ id: s.id, slot: s.slot, name: this.label(s), bot: s.bot })),
+      // open flowers first, then the ones still to sprout (the state's owner list says how many are open)
+      return { W: wd.W, H: wd.H, seed: wd.seed, link: wd.link, trap: wd.trap, flowers: wd.flowers.concat(wd.dormant).map(f => [f.x, f.y, f.r]), open: wd.flowers.length,
+        seats: this.sorted().map(s => ({ id: s.id, slot: s.slot, name: this.label(s), bot: s.bot, out: !!s.out })),
         bees: this.workers.map(w => ({ id: w.id, slot: w.slot, name: this.label(w.seat), bot: w.seat.bot, seat: w.seat.id })),
         level: this.levelInfo(),
         cfg: { hp: HP_MAX, secs: this.secs, flyV: FLY_V, trapR: TRAP_R + BEE_R, stingCd: STING_CD, fortSize: FORTIFY_SIZE, fortLoops: FORTIFY_LOOPS } };
@@ -141,24 +172,27 @@ const BloomSim = (() => {
       this.phase = "countdown"; this.tPhase = this.now() + COUNTDOWN;
       if (fresh) {
         this.level = 0;
-        if (this.shared || !["single", "levels"].includes(this.match)) this.match = "single";
+        if (!["single", "rounds"].includes(this.match)) this.match = "single";
         [...this.seats.values()].filter(s => s.bot).forEach(s => this.seats.delete(s.id));
         const humans = [...this.seats.values()].filter(s => !s.bot).length;
         const want = Math.max(0, Math.min(MAX_SEATS - humans, this.botsWanted));
         for (let i = 0; i < want; i++) { const bot = this.newSeat("", true); bot.slot = this.freeSlot(); this.seats.set(bot.id, bot); }
-        this.seats.forEach(s => { s.total = 0; });
+        this.seats.forEach(s => { s.total = 0; s.out = false; });
+        this.skillF = SKILL_ORDER.indexOf(this.skill);
       }
       this.seats.forEach(s => this.resetSeat(s));
-      const k = this.perSeat();
-      this.workers = this.sorted().flatMap(s => Array.from({ length: k }, (_, j) => this.newWorker(s, j)));
-      this.world = makeWorld(this.workers.length, Math.floor(rand() * 2 ** 30));
-      const fl = this.world.flowers, seats = this.sorted(), homes = spreadStarts(this.world, seats.length), taken = new Set(homes);
+      const r = this.rule(), seats = this.sorted().filter(s => !s.out);
+      this.workers = seats.flatMap(s => Array.from({ length: r.bees }, (_, j) => this.newWorker(s, j)));
+      // the garden is sized for every hive at full strength
+      const full = seats.length * (r.kind === "grow" ? 3 : r.bees + (r.bonus ? 1 : 0));
+      this.world = makeWorld(full, Math.floor(rand() * 2 ** 30), this.aspect);
+      const fl = this.world.flowers, homes = spreadStarts(this.world, seats.length), taken = new Set(homes);
       seats.forEach((s, k) => {
         // a player's bees start together: one on their home flower, the others on
         // the nearest white flowers, so they grow one patch instead of scattered ones
         const home = homes[k]; if (home == null) return;
         fl[home].owner = s.slot;
-        const team = this.workers.filter(w => w.seat === s);
+        const team = this.beesOf(s);
         const near = fl.map((_, i) => i).filter(i => !taken.has(i)).sort((a, b) => hyp(fl[a].x - fl[home].x, fl[a].y - fl[home].y) - hyp(fl[b].x - fl[home].x, fl[b].y - fl[home].y));
         const spots = [home, ...near.slice(0, team.length - 1)];
         spots.forEach(i => taken.add(i));
@@ -172,28 +206,40 @@ const BloomSim = (() => {
       this.broadcast(this.lobbyMsg());
       this.broadcast({ t: "go", in: COUNTDOWN, ...this.worldMsg() });
     }
-    startPlay(now) { this.phase = "play"; this.tEnd = now + this.secs; this.nextPred = now + PRED_FIRST; }
+    startPlay(now) {
+      this.phase = "play"; this.tEnd = now + this.secs; this.nextPred = now + PRED_FIRST;
+      // the flowers still to come sprout evenly over most of the round
+      this.nextSprout = now + SPROUT_FIRST; this.sproutGap = Math.max(3, (this.secs * .75 - SPROUT_FIRST) / Math.max(1, this.world.dormant.length));
+      this.nextAdapt = now + 10; this.sproutTold = false;
+    }
     endRound(now) {
       this.seats.forEach(s => { s.total += s.score; });
-      const more = this.match === "levels" && this.level < LEVELS.length - 1;
-      this.phase = "results"; this.tPhase = now + (more ? BETWEEN_LEVELS : RESULTS_SECONDS);
-      const key = this.match === "single" ? s => s.score : s => s.total;
-      const rank = [...this.seats.values()].sort((a, b) => key(b) - key(a)).map(s => {
+      const more = this.match === "rounds" && !this.solo && this.level < ROUNDS.length - 1;
+      this.phase = "results"; this.tPhase = now + (more ? BETWEEN_ROUNDS : RESULTS_SECONDS);
+      const key = this.match === "single" || this.solo ? s => s.score : s => s.total;
+      const rank = [...this.seats.values()].sort((a, b) => (!!a.out - !!b.out) || key(b) - key(a)).map(s => {
         const ps = this.patches(s.slot);
-        return { slot: s.slot, name: this.label(s), honey: Math.floor(s.score), total: Math.floor(s.total), bot: s.bot, blooms: s.blooms, faints: s.faints, knocks: s.knocks,
+        return { slot: s.slot, name: this.label(s), honey: Math.floor(s.score), total: Math.floor(s.total), bot: s.bot, blooms: s.blooms, faints: s.faints, knocks: s.knocks, out: !!s.out,
           flowers: this.world.flowers.filter(f => f.owner === s.slot).length, patch: Math.max(0, ...ps.map(p => p.length)), rate: ps.reduce((a, p) => a + p.length ** 2, 0) };
       });
-      this.lastEnd = { t: "end", rank, level: this.levelInfo(), final: !more, next: more ? LEVELS[this.level + 1].name : null,
-        nextWorkers: more ? LEVELS[this.level + 1].workers : null, in: more ? BETWEEN_LEVELS : RESULTS_SECONDS };
+      const nxt = more ? ROUNDS[this.level + 1] : null;
+      this.lastEnd = { t: "end", rank, level: this.levelInfo(), final: !more, next: nxt ? nxt.name : null, nextWorkers: nxt ? nxt.bees : null,
+        nextTop: nxt ? nxt.top || null : null, in: more ? BETWEEN_ROUNDS : RESULTS_SECONDS };
       this.broadcast(this.lastEnd);
     }
     afterResults() {
-      if (this.match === "levels" && this.level < LEVELS.length - 1) { this.level++; this.startCountdown(false); }
-      else this.backToLobby();
+      if (this.match === "rounds" && !this.solo && this.level < ROUNDS.length - 1) {
+        this.level++;
+        const top = ROUNDS[this.level].top;
+        // the final: only the best hives so far play it; the others watch
+        if (top) [...this.seats.values()].sort((a, b) => b.total - a.total).forEach((s, i) => { s.out = i >= top; });
+        this.startCountdown(false);
+      } else this.backToLobby();
     }
     backToLobby() {
       this.phase = "lobby"; this.level = 0; this.workers = [];
       [...this.seats.values()].filter(s => s.bot || s.gone != null).forEach(s => this.seats.delete(s.id));
+      this.seats.forEach(s => { s.out = false; });
       if (!this.seats.has(this.host) && this.seats.size) this.host = this.seats.keys().next().value;
       this.broadcast(this.lobbyMsg());
     }
@@ -210,7 +256,7 @@ const BloomSim = (() => {
     faint(w, why) {
       const s = w.seat;
       w.state = "faint"; w.timer = FAINT_SECONDS; w.hp = 0; w.sting = false;
-      const lost = Math.floor(s.score * FAINT_HONEY_LOSS / this.perSeat()); s.score -= lost; s.faints++;
+      const lost = Math.floor(s.score * FAINT_HONEY_LOSS / Math.max(1, this.beesOf(s).length)); s.score -= lost; s.faints++;
       this.fx("faint", w.x, w.y, w.slot);
       const [hitter, at] = w.lastHit || [null, 0]; w.lastHit = null;
       if (hitter && this.seats.get(hitter.id) === hitter && this.now() - at <= BOUNTY_WINDOW) {
@@ -242,7 +288,7 @@ const BloomSim = (() => {
     // May this bee take a new order? With one bee: whenever it is up. With several:
     // only once it has finished pollinating - circling one of your own flowers (or a webbed one).
     isFree(w) {
-      if (this.perSeat() === 1) return w.state === "orbit" || w.state === "fly";
+      if (this.workers.filter(o => o.seat === w.seat).length === 1) return w.state === "orbit" || w.state === "fly";
       if (w.state !== "orbit") return false;
       const f = this.world.flowers[w.f];
       return f.owner === w.slot || f.web > 0;
@@ -276,7 +322,8 @@ const BloomSim = (() => {
       const fl = this.world.flowers, mine = this.workers.filter(w => w.seat === s);
       if (wid != null) { const p = mine.find(w => w.id === wid); if (p && this.isFree(p)) { this.launch(p, fi); return; } }
       const t = fl[fi];
-      if (mine.length > 1 && mine.some(w => w.state === "fly" && w.target === fi)) return;   // one is already on its way
+      if (t.owner === s.slot && mine.some(w => (w.state === "fly" && w.target === fi) || (w.state === "orbit" && w.f === fi))) return;   // already on your flower
+      // a flower you are taking: another tap sends another free bee to help (see CO_POLLEN)
       const free = mine.filter(w => this.isFree(w) && !(w.state === "orbit" && w.f === fi));
       if (!free.length) {
         if (mine.some(w => w.state === "orbit" && w.f === fi)) return;                     // already there
@@ -284,7 +331,7 @@ const BloomSim = (() => {
       }
       this.launch(free.reduce((m, w) => hyp(w.x - t.x, w.y - t.y) < hyp(m.x - t.x, m.y - t.y) ? w : m), fi);
     }
-    botThink(w, dt, skill) {
+    botThink(w, dt, sk) {
       const wd = this.world, fl = wd.flowers;
       if (w.state !== "orbit") return;
       const f = fl[w.f];
@@ -293,14 +340,15 @@ const BloomSim = (() => {
       if (f.web > 0) w.wait = 0;
       w.wait -= dt;
       if (w.wait > 0) return;
-      const sk = SKILL[skill], birds = this.preds.filter(p => p.k === "bird"), [cx, cy] = wd.trap;
+      const birds = this.preds.filter(p => p.k === "bird"), [cx, cy] = wd.trap;
       const careless = rand() < sk.careless, options = [];
       fl.forEach((t, i) => {
         if (i === w.f || t.owner === w.slot || t.web > 0) return;
-        if (this.workers.some(o => o.seat === w.seat && o.target === i)) return;   // a teammate is already on its way
+        const mates = this.workers.some(o => o.seat === w.seat && (o.target === i || (o.state === "orbit" && o.f === i)));
+        if (mates && !this.fort.has(i)) return;   // a teammate is already on it (on a hedge, though, help it)
         if (!careless && segDist(w.x, w.y, t.x, t.y, cx, cy) < TRAP_R + BEE_R + 30) return;
         if (birds.some(p => hyp(t.x - p.x, t.y - p.y) < BIRD_R + 40)) return;
-        options.push([hyp(t.x - f.x, t.y - f.y) + (t.owner != null ? 120 : 0) + rand() * 90 + (this.fort.has(i) ? 220 : 0), i]);
+        options.push([hyp(t.x - f.x, t.y - f.y) + (t.owner != null ? 120 : 0) + rand() * 90 + (this.fort.has(i) ? (mates ? 20 : 220) : 0), i]);
       });
       if (!options.length) { w.wait = .5; return; }
       options.sort((a, b) => a[0] - b[0]);
@@ -315,8 +363,8 @@ const BloomSim = (() => {
       this.fort = this.fortified();
       for (const w of this.workers) {
         const s = w.seat;
-        if (s.bot) this.botThink(w, dt, this.skill);
-        else if (s.gone != null) this.botThink(w, dt, "normal");   // autopilot while their phone is away
+        if (s.bot) this.botThink(w, dt, this.solo ? skillAt(this.skillF) : SKILL[this.skill]);
+        else if (s.gone != null) this.botThink(w, dt, SKILL.normal);   // autopilot while their phone is away
         w.safe = Math.max(0, w.safe - dt); w.hitCd = Math.max(0, w.hitCd - dt); w.stingCd = Math.max(0, w.stingCd - dt);
         if (w.state === "dizzy" || w.state === "faint") { w.timer -= dt; if (w.timer <= 0) this.respawn(w); continue; }
         if (w.state === "orbit") {
@@ -327,8 +375,12 @@ const BloomSim = (() => {
           if (f.web > 0) { this.hurt(w, WEB_DPS * dt, "caught in a web"); if (w.state === "faint") continue; }
           else if (f.owner === w.slot) w.hp = Math.min(HP_MAX, w.hp + HEAL_PER_S * dt);
           else {
-            w.prog += w.v * dt;
-            if (w.prog >= (f.owner == null ? 1 : this.fort.has(w.f) ? FORTIFY_LOOPS : 2) * TAU) { f.owner = w.slot; f.flash = 1; w.prog = 0; s.blooms++; this.fx("bloom", f.x, f.y, w.slot); }
+            const k = this.workers.filter(o => o.seat === s && o.state === "orbit" && o.f === w.f).length;
+            w.prog += w.v * dt * (1 + CO_POLLEN * (k - 1));
+            if (w.prog >= (f.owner == null ? 1 : this.fort.has(w.f) ? FORTIFY_LOOPS : 2) * TAU) {
+              f.owner = w.slot; f.flash = 1; s.blooms++; this.fx("bloom", f.x, f.y, w.slot);
+              this.workers.forEach(o => { if (o.seat === s && o.f === w.f) o.prog = 0; });   // the helpers are done too
+            }
           }
         } else if (w.state === "fly") {
           const t = fl[w.target], dx = t.x - w.x, dy = t.y - w.y, d = hyp(dx, dy) || 1;
@@ -373,7 +425,74 @@ const BloomSim = (() => {
         else if (c.state === "fly" && a.state === "orbit") this.bump(c, a);
       }
       this.stepPredators(dt, now);
+      this.stepGarden(now);
+      this.manageHives(now);
       this.seats.forEach(s => { s.score += this.patches(s.slot).reduce((n, p) => n + p.length ** 2, 0) * dt; });
+    }
+    // new flowers sprout during the round, and stay; solo bots adjust to the player
+    stepGarden(now) {
+      const wd = this.world;
+      if (wd.dormant.length && now >= this.nextSprout) {
+        const f = wd.dormant.shift(); wd.flowers.push(f); f.flash = 1;
+        this.fx("sprout", f.x, f.y); this.nextSprout = now + this.sproutGap;
+        if (!this.sproutTold) { this.sproutTold = true; this.toast = "New flowers are sprouting in the garden!"; }
+      }
+      if (this.solo && now >= this.nextAdapt) {
+        // sharper while the player is well ahead, easing back (never below the chosen skill) while well behind
+        this.nextAdapt = now + 10;
+        const all = [...this.seats.values()], me = Math.max(0, ...all.filter(s => !s.bot).map(s => s.score)), best = Math.max(0, ...all.filter(s => s.bot).map(s => s.score));
+        const base = SKILL_ORDER.indexOf(this.skill);
+        if (me > best * 1.15 + 20) this.skillF = Math.min(2, this.skillF + .25);
+        else if (me < best * .7) this.skillF = Math.max(base, this.skillF - .25);
+      }
+    }
+    // how many bees this hive may have right now
+    beesAllowed(s, flowers, humansMost) {
+      if (s.out) return 0;
+      const r = this.rule();
+      if (r.kind === "grow") {
+        const n = Math.max(1, GROW_STEPS.filter(k => flowers >= k).length);
+        return s.bot ? Math.min(n, MAX_BEES, humansMost) : Math.min(n, MAX_BEES);   // bots never have more bees than the player
+      }
+      return r.bees + (r.bonus && flowers >= r.bonus ? 1 : 0);
+    }
+    // hatch a bee when a hive reaches a step; send one home when it has stayed below a step too long
+    manageHives(now) {
+      const counts = new Map();
+      this.world.flowers.forEach(f => { if (f.owner != null) counts.set(f.owner, (counts.get(f.owner) || 0) + 1); });
+      const have = new Map([...this.seats.values()].map(s => [s, this.beesOf(s)]));
+      const humansMost = Math.max(1, ...[...this.seats.values()].filter(s => !s.bot).map(s => have.get(s).length));
+      const r = this.rule();
+      this.seats.forEach(s => {
+        const mine = have.get(s), want = this.beesAllowed(s, counts.get(s.slot) || 0, humansMost);
+        if (want > mine.length) {
+          s.shrinkAt = null; this.hatch(s, mine);
+          if (!s.bot) this.note(s, `A new bee hatched: you have ${mine.length + 1} bees`);
+        } else if (want < mine.length && mine.length) {
+          const need = r.kind === "grow" ? GROW_STEPS[mine.length - 1] : r.bonus;
+          if (s.shrinkAt == null) {
+            s.shrinkAt = now + SHRINK_GRACE;
+            if (!s.bot && need) this.note(s, `Hold ${need} flowers or your ${ordinal(mine.length)} bee flies home in ${SHRINK_GRACE} s`);
+          } else if (now >= s.shrinkAt) {
+            s.shrinkAt = null;
+            const w = mine.reduce((a, b) => b.id > a.id ? b : a);        // the newest bee goes
+            this.workers.splice(this.workers.indexOf(w), 1);
+            this.fx("home", w.x, w.y, w.slot);
+            if (!s.bot && need) this.note(s, `Your ${ordinal(mine.length)} bee flew home. Hold ${need} flowers to get it back`);
+          }
+        } else s.shrinkAt = null;
+      });
+    }
+    // a new bee for this hive, on one of its own flowers, with a short shield
+    hatch(s, mine) {
+      const used = new Set(mine.map(w => w.id - s.id * 10));
+      let k = 0; while (used.has(k)) k++;
+      const w = this.newWorker(s, k), fl = this.world.flowers;
+      const own = fl.map((f, i) => f.owner === s.slot && f.web <= 0 ? i : -1).filter(i => i >= 0);
+      const fi = choice(own.length ? own : fl.map((_, i) => i)), f = fl[fi];
+      Object.assign(w, { f: fi, rad: f.R, ang: uniform(0, TAU), safe: SAFE_SECONDS, wait: 1, dir: s.slot % 2 === 0 ? 1 : -1 });
+      this.place(w, f); this.workers.push(w);
+      this.fx("hatch", w.x, w.y, w.slot);
     }
     stingHit(a, v) {
       a.sting = false;
@@ -455,7 +574,7 @@ const BloomSim = (() => {
       if (Number.isInteger(m.bots)) this.botsWanted = Math.max(0, Math.min(MAX_SEATS - 1, m.bots));
       if (ROUND_CHOICES.includes(m.secs)) this.secs = m.secs;
       if (SKILL[m.skill]) this.skill = m.skill;
-      if (m.match === "single" || m.match === "levels") this.match = this.shared ? "single" : m.match;
+      if (m.match === "single" || m.match === "rounds" || m.match === "levels") this.match = m.match === "single" ? "single" : "rounds";
     }
     join(s) {
       if (this.phase !== "lobby") { this.send(s, { t: "err", msg: "That garden is mid-round. Wait for the round to end and try again." }); return false; }
@@ -505,7 +624,7 @@ const BloomSim = (() => {
             if (m.t === "hello") {
               const s = this.newSeat(m.name); s.link = link; s.dev = String(m.dev || "").slice(0, 40); s.auto = m.auto !== false;
               const first = this.seats.size === 0 && (m.mode === "create" || m.mode === "solo");
-              if (first) { this.solo = m.mode === "solo"; this.shared = !!m.shared; this.applySettings(m); }
+              if (first) { this.solo = m.mode === "solo"; this.shared = !!m.shared; if (typeof m.aspect === "number") this.aspect = m.aspect; this.applySettings(m); }
               if (this.join(s)) { seat = s; if (first && this.solo) this.startCountdown(); }
             } else if (m.t === "resume") { seat = this.resume(link, String(m.key || "")); if (!seat) link.send({ t: "lost" }); }
             else if (m.t === "watch") {

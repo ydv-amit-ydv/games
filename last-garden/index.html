@@ -74,14 +74,14 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
   background:linear-gradient(180deg,rgba(24,44,66,.92),rgba(10,20,32,.94));
   border:1px solid var(--goldDim);box-shadow:0 4px 14px rgba(0,0,0,.5)}
 #lootbtn.show{display:block}
-#purse{position:fixed;right:12px;bottom:calc(var(--padH) + 108px + var(--safe));z-index:3;padding:8px 11px;
-  font:600 11px/1.5 system-ui;color:#e8e4d4;border-radius:12px;pointer-events:none;
-  background:linear-gradient(180deg,rgba(24,44,66,.88),rgba(10,20,32,.92));
-  border:1px solid var(--goldDim);box-shadow:0 4px 14px rgba(0,0,0,.45);display:none}
-#purse.show{display:block}
+#purse{padding:10px 12px;font:600 13px/1.5 system-ui;color:#e8e4d4;border-radius:12px;display:grid;gap:5px;
+  background:rgba(24,44,66,.6);border:1px solid var(--goldDim)}
+#howbtn{position:fixed;right:12px;bottom:calc(var(--padH) + 108px + var(--safe));z-index:3;width:42px;height:42px;
+  font:800 18px system-ui;color:#1a1204;background:linear-gradient(180deg,var(--gold2),var(--gold));
+  border:1px solid #8a7038;border-radius:50%;box-shadow:0 4px 14px rgba(0,0,0,.5);cursor:pointer}
 #purse b{color:var(--gold2);font-weight:700;letter-spacing:.4px;font-size:10.5px}
 #purse span{display:flex;align-items:center;gap:7px}
-#purse i{width:22px;height:9px;border-radius:5px;display:inline-block}
+#purse i{width:22px;height:9px;border-radius:5px;display:inline-block;flex:none}
 #lootbtn.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:#1a1204;
   border-color:#8a7038}
 #viewbtn{position:fixed;right:12px;bottom:calc(var(--padH) + 24px + var(--safe));z-index:3;padding:11px 16px;
@@ -290,12 +290,24 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div id="banner"></div>
 <button id="viewbtn" type="button">Map view</button>
 <button id="lootbtn" type="button" aria-pressed="false">○ Treasure</button>
-<!-- what each cloak colour means: whether meeting that figure costs or pays -->
-<div id="purse" aria-hidden="true"><b>WHO TO MEET</b>
-  <span><i style="background:linear-gradient(90deg,#f2a33a,#d8571c)"></i>poorer: they take your gold</span>
-  <span><i style="background:linear-gradient(90deg,#7fb2d8,#2f6fd0)"></i>richer: you take theirs</span>
-  <span><i style="background:#e6c24a"></i>nothing changes hands now</span>
-  <span><i style="background:#b8452e"></i>you</span></div>
+<!-- a clean screen: what the cloak colours mean, and the rules, wait behind this button -->
+<button id="howbtn" type="button" aria-label="How to play" aria-controls="howto">?</button>
+<div id="howto" class="ov" style="display:none"><div class="sheet">
+  <h2 style="margin:0 0 8px">How to play</h2>
+  <div id="purse"><b>WHO TO MEET: the colour of each cloak</b>
+    <span><i style="background:#b8452e"></i>red: you</span>
+    <span><i style="background:linear-gradient(90deg,#f2a33a,#d8571c)"></i>orange: carries less than you, so they would take a cut of your gold (deeper orange: a bigger cut)</span>
+    <span><i style="background:linear-gradient(90deg,#7fb2d8,#2f6fd0)"></i>blue: carries more than you, so you would take a cut of theirs (deeper blue: a bigger cut)</span>
+    <span><i style="background:#e6c24a"></i>yellow: nothing would change hands right now</span></div>
+  <div class="rules" style="margin-top:12px">
+    <b>Bank your gold</b>: carry it to the idol and it is safe for good and counts in full. Gold still in your hands counts half and can be taken.<br>
+    <b>Meeting someone</b>: whoever carries less takes a cut from whoever carries more. Banked gold is untouchable.<br>
+    <b>Sanctuary</b>: inside the green ring around the idol nobody can be robbed. Loitering by the idol stops you robbing others.<br>
+    <b>Boats</b>: step onto a landing stage and the ferry carries you across.<br>
+    <b>Map view</b> shows the whole garden; <b>Treasure</b> marks the chests worth walking to.
+  </div>
+  <button id="howclose" class="big" type="button" style="margin-top:14px">Back to the garden</button>
+</div></div>
 <!-- the match ticker: what is happening elsewhere in the garden -->
 <div id="feed" aria-live="polite"></div>
 
@@ -742,7 +754,7 @@ function drawTopDown(now, whole) {
     const [body, trim] = cloak(f);
     ATLAS.blit(ctx, ATLAS.person(FT, f.face || 0, fr, body, trim, 0), sx, sy);
     const top = sy - FT * 1.62;
-    if (f.me) PAINT.paintPlate(ctx, sx, top, banked ? 'You ✓ ' + bankAmt : 'You', '#ffd45e', T);
+    if (f.me && banked) PAINT.paintPlate(ctx, sx, top, '✓ ' + bankAmt, '#ffd45e', T);   // a clean view: your red cloak is the marker
     else if (f.name) PAINT.paintPlate(ctx, sx, top, f.name, '#cfe0ff', T);
     const em = emotes.get(f.id);
     if (em && now - em.t < 2000) drawEmote(sx + T * .5, top - T * .95, em.e, (now - em.t) / 2000, T);
@@ -1119,7 +1131,7 @@ function handle(m) {
       if (ws) { ws.onclose = null; ws.close(); }
       joined = false; $('wait').style.display = 'none'; $('login').style.display = 'flex';
       break;
-    case 'n': onLevelStart(m); $('purse').classList.add('show'); break;
+    case 'n': onLevelStart(m); break;
     case 'p': onPos(m); break;
     case 'o': onOthers(m.l); break;
     case 'chest': onChest(m); break;
@@ -1171,14 +1183,12 @@ function handle(m) {
       $('wait').style.display = 'flex'; beep(523, 1046, .35, 'triangle', .07);
       break;
     case 'eliminated':
-      $('purse').classList.remove('show');
       $('elimMsg').textContent = `You finished #${m.rank} in ${m.stage} with ${m.money} gold`
         + (m.bank ? ` (${m.bank} of it banked)` : '')
         + `, ${m.prog}% of the way to the idol — ${m.score} points.`;
       $('elim').style.display = 'flex'; beep(420, 160, .45, 'triangle', .05);
       break;
     case 'tourEnd':
-      $('purse').classList.remove('show');
       if (m.practice) {
         $('champTitle').textContent = 'Practice over';
         $('champMsg').textContent =
@@ -1663,6 +1673,9 @@ function start() {
   connect();
 }
 $('go').onclick = start;
+$('howbtn').onclick = () => { $('howto').style.display = 'flex'; };
+$('howclose').onclick = () => { $('howto').style.display = 'none'; };
+$('howto').addEventListener('click', e => { if (e.target === $('howto')) $('howto').style.display = 'none'; });
 // browser mode: tell the host whether other devices can reach this tab yet
 let netSince = 0;
 setInterval(() => {

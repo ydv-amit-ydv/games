@@ -151,6 +151,27 @@ const Art = (() => {
     const flap = o.faint ? .4 : .55 + .45 * Math.abs(Math.sin(t * 38));
     ctx.fillStyle = "rgba(255,255,255,.82)"; ctx.strokeStyle = "rgba(70,100,120,.55)"; ctx.lineWidth = 1;
     [-1, 1].forEach(sg => { ctx.beginPath(); ctx.ellipse(-2, sg * 8, 8, 5.2 * flap, sg * -.35, 0, TAU); ctx.fill(); ctx.stroke(); });
+    // the body never changes, only the wings flap: it is drawn once per colour and size, then placed
+    const m = ctx.getTransform(), k = Math.max(.5, Math.round(Math.hypot(m.a, m.b) * 4) / 4), key = col + "|" + k;
+    let sp = beeBodies.get(key);
+    if (!sp) {
+      if (beeBodies.size > 120) beeBodies.clear();
+      sp = document.createElement("canvas"); sp.width = Math.ceil(44 * k); sp.height = Math.ceil(24 * k);
+      const c = sp.getContext("2d"); c.scale(k, k); c.translate(20, 12); beeBody(c, col);
+      beeBodies.set(key, sp);
+    }
+    ctx.drawImage(sp, -20, -12, 44, 24);
+    ctx.restore();
+    if (o.dizzy) for (let i = 0; i < 3; i++) { const a = t * 6 + i * TAU / 3; star(ctx, x + Math.cos(a) * 14, y - 18 + Math.sin(a) * 5, 4.5, "#f6c445"); }
+    if (o.faint) { ctx.save(); ctx.font = "800 13px Nunito, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#1e4423"; ctx.fillText("z z z", x + 4, y - 18 - Math.sin(t * 3) * 3); ctx.restore(); }
+    if (o.hp != null && o.hp < 100 && !o.faint) {
+      const w = 28, f = Math.max(0, o.hp) / 100;
+      ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.roundRect(x - w / 2 - 1, y + 16, w + 2, 6, 3); ctx.fill();
+      ctx.fillStyle = f > .5 ? "#4fae52" : f > .25 ? "#f0a824" : "#e8504f"; ctx.beginPath(); ctx.roundRect(x - w / 2, y + 17, w * f, 4, 2); ctx.fill();
+    }
+  }
+  const beeBodies = new Map();
+  function beeBody(ctx, col) {
     ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-17, 0); ctx.strokeStyle = "#3a2a1a"; ctx.lineWidth = 2; ctx.stroke();
     ctx.save(); ctx.beginPath(); ctx.ellipse(0, 0, 12.5, 8.5, 0, 0, TAU); ctx.fillStyle = col; ctx.fill(); ctx.clip();
     ctx.fillStyle = "#3a2a1a"; ctx.fillRect(-7, -10, 3.4, 20); ctx.fillRect(-.5, -10, 3.4, 20);
@@ -160,14 +181,6 @@ const Art = (() => {
     ctx.fillStyle = "#3a2a1a"; ctx.beginPath(); ctx.arc(12, 0, 5.6, 0, TAU); ctx.fill();
     ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(14, -2.2, 1.6, 0, TAU); ctx.arc(14, 2.2, 1.6, 0, TAU); ctx.fill();
     ctx.strokeStyle = "#3a2a1a"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(15, -3); ctx.quadraticCurveTo(20, -6, 21, -9); ctx.moveTo(15, 3); ctx.quadraticCurveTo(20, 6, 21, 9); ctx.stroke();
-    ctx.restore();
-    if (o.dizzy) for (let i = 0; i < 3; i++) { const a = t * 6 + i * TAU / 3; star(ctx, x + Math.cos(a) * 14, y - 18 + Math.sin(a) * 5, 4.5, "#f6c445"); }
-    if (o.faint) { ctx.save(); ctx.font = "800 13px Nunito, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#1e4423"; ctx.fillText("z z z", x + 4, y - 18 - Math.sin(t * 3) * 3); ctx.restore(); }
-    if (o.hp != null && o.hp < 100 && !o.faint) {
-      const w = 28, f = Math.max(0, o.hp) / 100;
-      ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.roundRect(x - w / 2 - 1, y + 16, w + 2, 6, 3); ctx.fill();
-      ctx.fillStyle = f > .5 ? "#4fae52" : f > .25 ? "#f0a824" : "#e8504f"; ctx.beginPath(); ctx.roundRect(x - w / 2, y + 17, w * f, 4, 2); ctx.fill();
-    }
   }
   function star(ctx, x, y, r, col) { ctx.fillStyle = col; ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .45 : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } ctx.closePath(); ctx.fill(); ctx.strokeStyle = "#a9701f"; ctx.lineWidth = .8; ctx.stroke(); }
   function flytrap(ctx, x, y, t) {
@@ -277,9 +290,10 @@ const Art = (() => {
   function label(ctx, x, y, txt, col = "#1e4423", size = 13) {
     ctx.save(); ctx.font = `800 ${size}px Nunito, system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     const w = ctx.measureText(txt).width + 16;
-    ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.shadowColor = "rgba(0,0,0,.15)"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
-    ctx.beginPath(); ctx.roundRect(x - w / 2, y - size * .9, w, size * 1.8, 8); ctx.fill();
-    ctx.shadowColor = "transparent"; ctx.fillStyle = col; ctx.fillText(txt, x, y + 1); ctx.restore();
+    // no blurred shadow: a soft edge line instead (blur is slow on phones)
+    ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.strokeStyle = "rgba(0,0,0,.12)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x - w / 2, y - size * .9, w, size * 1.8, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = col; ctx.fillText(txt, x, y + 1); ctx.restore();
   }
   return { mix, rng, lawn, daisy, hedge, leaf, tree, topiary, pond, bed, flower, vine, bee, star, flytrap, dragonfly, birdShadow, bird, spider, web, butterfly, ring, hedgeRing, label };
 })();
@@ -287,7 +301,7 @@ const Art = (() => {
 
 const Garden = (() => {
   const M = 120;               // meadow margin around the hedge, for trees and beds
-  let bgId = 0;                    // which background the backdrop layer currently shows
+  let bgId = 0, openN = 0;         // openN: flowers open so far (the rest sprout during the round)                    // which background the backdrop layer currently shows
   let world = null, bg = null, parts = [], flies = [], flash = [], floats = [], honeyClock = 0;
   const BGS = 1.25;
 
@@ -295,6 +309,7 @@ const Garden = (() => {
     world = w;
     world.fl = w.flowers.map(([x, y, r]) => ({ x, y, r, R: r + 26 }));
     flash = world.fl.map(() => 0);
+    openN = w.open != null ? w.open : world.fl.length;
     parts = [];
     bg = paintBackground(); bgId++;
     const R = Art.rng(w.seed + 99);
@@ -339,18 +354,28 @@ const Garden = (() => {
   }
 
   let rot = false;                 // tall screens get the garden turned sideways
+  // how much of the meadow outside the hedge to show (o.margin): phones show only a strip of it
+  let vm = M;
   function fit(vw, vh, pad = 0) {
     if (rot) [vw, vh] = [vh, vw];
-    const ww = world.W + 2 * M - pad * 2, wh = world.H + 2 * M - pad * 2;
+    const ww = world.W + 2 * vm - pad * 2, wh = world.H + 2 * vm - pad * 2;
     const s = Math.min(vw / ww, vh / wh);
-    return { s, ox: (vw - (world.W + 2 * M) * s) / 2 + M * s, oy: (vh - (world.H + 2 * M) * s) / 2 + M * s };
+    return { s, ox: (vw - (world.W + 2 * vm) * s) / 2 + vm * s, oy: (vh - (world.H + 2 * vm) * s) / 2 + vm * s };
   }
   // text drawn in the garden stays upright even when the garden is turned
   function upright(ctx, x, y, fn) { ctx.save(); ctx.translate(x, y); if (rot) ctx.rotate(-Math.PI / 2); fn(); ctx.restore(); }
   let zoom = 1;                    // bees and labels grow when the garden is drawn small
   function tag(ctx, x, y, txt, col, size) { upright(ctx, x, y, () => { ctx.scale(zoom, zoom); Art.label(ctx, 0, 0, txt, col, size); }); }
 
+  // patches only change when a snapshot does: work them out once per snapshot, not once per use
+  let pcOwners = null; const pcMemo = new Map();
   function patches(owners, slot) {
+    if (owners !== pcOwners) { pcOwners = owners; pcMemo.clear(); }
+    let got = pcMemo.get(slot);
+    if (!got) { got = patchesOf(owners, slot); pcMemo.set(slot, got); }
+    return got;
+  }
+  function patchesOf(owners, slot) {
     const mine = world.fl.filter((f, i) => owners[i] === slot), seen = new Set(), out = [];
     for (const f of mine) {
       if (seen.has(f)) continue; const comp = [], st = [f]; seen.add(f);
@@ -359,6 +384,27 @@ const Garden = (() => {
     }
     return out;
   }
+
+  // Each kind of flower is drawn once into a little picture, then placed (gently swaying) every
+  // frame: a flower is two dozen shapes and a gradient, and redrawing them all every frame was the
+  // next biggest cost on phones after the background.
+  const sprites = new Map();
+  function drawFlower(ctx, f, col, t, flash, dpr, still) {
+    const k = Math.max(.5, Math.round(view.s * dpr * zoomFor(f) * 4) / 4), key = f.r + "|" + col + "|" + k;
+    let sp = sprites.get(key);
+    const half = Math.ceil(f.r * 1.7 + 6);
+    if (!sp) {
+      if (sprites.size > 300) sprites.clear();
+      sp = document.createElement("canvas"); sp.width = sp.height = Math.ceil(half * 2 * k);
+      const c = sp.getContext("2d"); c.scale(k, k);
+      Art.flower(c, half, half, f.r, col, -half * .05 / 1.3, 0);        // drawn still (no sway)
+      sprites.set(key, sp);
+    }
+    const sway = still ? 0 : Math.sin(t * 1.3 + f.x * .05) * .06, s = 1 + flash * .3;
+    ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(sway); if (s !== 1) ctx.scale(s, s);
+    ctx.drawImage(sp, -half, -half, half * 2, half * 2); ctx.restore();
+  }
+  const zoomFor = () => 1;
 
   function addFx(list) {
     for (const [k, x, y, slot] of list) {
@@ -369,6 +415,9 @@ const Garden = (() => {
       else if (k === "bump") burst(x, y, 6, () => ({ col: "#f6c445", shape: "star", v: 50 + Math.random() * 80 }));
       else if (k === "faint") burst(x, y, 14, () => ({ col: "rgba(255,255,255,.9)", shape: "puff", v: 30 + Math.random() * 60 }));
       else if (k === "snap") burst(x, y, 10, () => ({ col: "#4da54f", shape: "petal", v: 80 + Math.random() * 120 }));
+      else if (k === "sprout") { const fi = world.fl.findIndex(f => Math.abs(f.x - x) < 2 && Math.abs(f.y - y) < 2); if (fi >= 0) { flash[fi] = 1; openN = Math.max(openN, fi + 1); } burst(x, y, 14, () => ({ col: Math.random() < .5 ? "#7cc46a" : "#ffffff", shape: "petal", v: 40 + Math.random() * 90 })); }
+      else if (k === "hatch") burst(x, y, 16, () => ({ col: Math.random() < .5 ? col : "#f6c445", shape: "star", v: 50 + Math.random() * 110 }));
+      else if (k === "home") burst(x, y, 10, () => ({ col: "rgba(255,255,255,.9)", shape: "puff", v: 20 + Math.random() * 40 }));
       else if (k === "land") burst(x, y, 6, () => ({ col: "#f6c445", shape: "dot", v: 20 + Math.random() * 50 }));
       else if (k === "swoop") burst(x, y, 22, () => ({ col: "#5a6670", shape: "feather", v: 80 + Math.random() * 160 }));
     }
@@ -404,17 +453,18 @@ const Garden = (() => {
   function flowerAt(px, py) {
     const p = toWorld(px, py); if (!p || !world) return -1;
     let best = -1, bd = 1e9;
-    world.fl.forEach((f, i) => { const d = Math.hypot(p.x - f.x, p.y - f.y); if (d < f.R + Math.max(10, 22 / view.s) && d < bd) { bd = d; best = i; } });
+    world.fl.forEach((f, i) => { if (i >= openN) return; const d = Math.hypot(p.x - f.x, p.y - f.y); if (d < f.R + Math.max(10, 22 / view.s) && d < bd) { bd = d; best = i; } });
     return best;
   }
   // flowers nearest a bee, nearest first: what the laptop keys step through
   function nearestFlowers(b) {
-    return world.fl.map((f, i) => [i, Math.hypot(f.x - b.x, f.y - b.y)]).filter(([i]) => !(b.st === 0 && i === b.f)).sort((a, c) => a[1] - c[1]).map(a => a[0]);
+    return world.fl.slice(0, openN).map((f, i) => [i, Math.hypot(f.x - b.x, f.y - b.y)]).filter(([i]) => !(b.st === 0 && i === b.f)).sort((a, c) => a[1] - c[1]).map(a => a[0]);
   }
 
   function draw(ctx, vw, vh, S, t, o = {}) {
     if (!world) return;
     rot = !!o.rotate && vh > vw * 1.15;
+    vm = o.margin != null ? o.margin : M;
     const { s, ox, oy } = fit(vw, vh, o.pad || 0);
     const dt = o.dt || 1 / 60;
     zoom = Math.max(1, Math.min(1.8, .62 / s));
@@ -435,32 +485,47 @@ const Garden = (() => {
       }
     } else ctx.drawImage(bg, -M, -M, world.W + 2 * M, world.H + 2 * M);
     const owners = S.o || [];
+    if (owners.length > openN && owners.length <= world.fl.length) openN = owners.length;   // a flower sprouted
     const slots = [...new Set(owners.filter(v => v != null))];
-    slots.forEach(sl => patches(owners, sl).forEach(p => { for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) if (Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y) <= world.link) Art.vine(ctx, p[i], p[j], PC[sl], t); }));
-    // vine reach: faint dots from my flowers to every flower close enough to join them
-    (o.reachSlots || []).forEach(sl => {
-      ctx.save(); ctx.strokeStyle = PC[sl]; ctx.globalAlpha = .4; ctx.lineWidth = 2.5; ctx.lineCap = "round"; ctx.setLineDash([1, 9]);
-      world.fl.forEach((a, i) => { if (owners[i] !== sl) return; world.fl.forEach((b, j) => {
-        if (owners[j] === sl || Math.hypot(a.x - b.x, a.y - b.y) > world.link) return;
-        const d = Math.hypot(b.x - a.x, b.y - a.y) || 1, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d;
-        ctx.beginPath(); ctx.moveTo(a.x + ux * a.r, a.y + uy * a.r); ctx.lineTo(b.x - ux * b.r, b.y - uy * b.r); ctx.stroke();
-      }); });
-      ctx.restore();
-    });
+    // fortified patches: 4+ joined flowers grow a hedge and take 3 loops to steal
+    const fortSize = world.cfg.fortSize || 4, fortLoops = world.cfg.fortLoops || 3, fort = new Set();
+    slots.forEach(sl => patches(owners, sl).forEach(p => { if (p.length >= fortSize) p.forEach(f => fort.add(world.fl.indexOf(f))); }));
+    world.fl.forEach((f, i) => { if (i < openN) flash[i] = Math.max(0, flash[i] - dt * 1.5); });
+    const dpr = o.dpr || devicePixelRatio || 1;
+    // the flower bed: vines, hedges and flowers. They only change when a flower changes hands,
+    // sprouts or flashes, so with a layer canvas (o.layer) they are painted only then, still
+    // (no sway), and each frame draws only what moves
+    const bed = (c, tt) => {
+      slots.forEach(sl => patches(owners, sl).forEach(p => { for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) if (Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y) <= world.link) Art.vine(c, p[i], p[j], PC[sl], tt); }));
+      // vine reach: faint dots from my flowers to every flower close enough to join them
+      (o.reachSlots || []).forEach(sl => {
+        c.save(); c.strokeStyle = PC[sl]; c.globalAlpha = .28; c.lineWidth = 2.5; c.lineCap = "round"; c.setLineDash([1, 9]);
+        world.fl.forEach((a, i) => { if (owners[i] !== sl) return; world.fl.forEach((b, j) => {
+          if (j >= openN || owners[j] === sl || Math.hypot(a.x - b.x, a.y - b.y) > world.link) return;
+          const d = Math.hypot(b.x - a.x, b.y - a.y) || 1, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d;
+          c.beginPath(); c.moveTo(a.x + ux * a.r, a.y + uy * a.r); c.lineTo(b.x - ux * b.r, b.y - uy * b.r); c.stroke();
+        }); });
+        c.restore();
+      });
+      fort.forEach(i => { const f = world.fl[i]; Art.hedgeRing(c, f.x, f.y, f.r + 15, tt); });
+      world.fl.forEach((f, i) => { if (i < openN) drawFlower(c, f, owners[i] == null ? null : PC[owners[i]], tt, flash[i], dpr, tt == null); });
+    };
+    if (o.layer) {
+      const lc = o.layer, flashing = flash.some((v, i) => i < openN && v > 0);
+      const key = [bgId, vw, vh, dpr, rot, s.toFixed(4), ox | 0, oy | 0, openN, owners.join(), (o.reachSlots || []).join()].join("|");
+      if (flashing || lc.dataset.key !== key) {
+        lc.dataset.key = flashing ? "" : key;
+        if (lc.width !== Math.round(vw * dpr) || lc.height !== Math.round(vh * dpr)) { lc.width = Math.round(vw * dpr); lc.height = Math.round(vh * dpr); }
+        const c = lc.getContext("2d"); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, lc.width, lc.height); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (rot) { c.translate(vw, 0); c.rotate(Math.PI / 2); }
+        c.translate(ox, oy); c.scale(s, s); bed(c, null);
+      }
+    } else bed(ctx, t);
     Art.flytrap(ctx, world.trap[0], world.trap[1], t);
     // bird shadows sit under everything that flies
     (S.p || []).filter(p => p[0] === "b").forEach(p => { if (p[3] < 1) Art.birdShadow(ctx, p[1], p[2], p[3], 75, t); });
     const webs = new Map(); (S.p || []).filter(p => p[0] === "s").forEach(p => webs.set(p[1], p));
-    // fortified patches: 4+ joined flowers grow a hedge and take 3 loops to steal
-    const fortSize = world.cfg.fortSize || 4, fortLoops = world.cfg.fortLoops || 3, fort = new Set();
-    slots.forEach(sl => patches(owners, sl).forEach(p => { if (p.length >= fortSize) p.forEach(f => fort.add(world.fl.indexOf(f))); }));
-    fort.forEach(i => { const f = world.fl[i]; Art.hedgeRing(ctx, f.x, f.y, f.r + 15, t); });
-    world.fl.forEach((f, i) => {
-      ctx.save(); ctx.setLineDash([3, 6]); ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(f.x, f.y, f.R, 0, TAU); ctx.stroke(); ctx.restore();
-      flash[i] = Math.max(0, flash[i] - dt * 1.5);
-      Art.flower(ctx, f.x, f.y, f.r, owners[i] == null ? null : PC[owners[i]], t, flash[i]);
-      const w = webs.get(i); if (w) Art.web(ctx, f.x, f.y, f.R - 2, Math.min(1, w[3] / .8) * Math.min(1, w[4] / 1.5));
-    });
+    webs.forEach((w, i) => { const f = world.fl[i]; if (f) Art.web(ctx, f.x, f.y, f.R - 2, Math.min(1, w[3] / .8) * Math.min(1, w[4] / 1.5)); });
     // pollination progress
     (S.b || []).forEach(b => { if (b.st === 0 && owners[b.f] !== b.slot && b.prog > 0) Art.ring(ctx, world.fl[b.f].x, world.fl[b.f].y, world.fl[b.f].r + 12, PC[b.slot], Math.min(1, b.prog / ((owners[b.f] == null ? 1 : fort.has(b.f) ? fortLoops : 2) * TAU)), 4); });
     // where my bees are going, and where a tap would send them
@@ -506,16 +571,17 @@ const Garden = (() => {
     slots.forEach(sl => patches(owners, sl).forEach(p => {
       const n = p.length, cx = p.reduce((a, f) => a + f.x, 0) / n, cy = p.reduce((a, f) => a + f.y, 0) / n;
       const mine = mineSlots.has(sl);
-      if (n === 1 && !mine && !o.allBadges) return;
-      const txt = n === 1 ? "+1/s" : `${n} flowers · ${n}×${n} = +${n * n}/s${n >= fortSize ? " · fortified" : ""}`;
-      const by = n === 1 ? p[0].y + p[0].R + 14 : cy + (n === 2 ? 18 : 0);
-      tag(ctx, cx, by, txt, PC[sl], n === 1 ? (o.allBadges ? 13 : 11) : mine || o.allBadges ? 15 : 12);
+      // the big screen spells it out; a player's own screen stays clean: a small "+9/s" on their own patches
+      if (o.allBadges) {
+        const txt = n === 1 ? "+1/s" : `${n} flowers · ${n}×${n} = +${n * n}/s${n >= fortSize ? " · fortified" : ""}`;
+        tag(ctx, cx, n === 1 ? p[0].y + p[0].R + 14 : cy + (n === 2 ? 18 : 0), txt, PC[sl], n === 1 ? 13 : 15);
+      } else if (mine && n > 1) tag(ctx, cx, cy + (n === 2 ? 18 : 0), `+${n * n}/s`, PC[sl], 12);
     }));
     // a "+n" floats up from every patch each second, as the honey comes in
     honeyClock += dt;
     if (honeyClock >= 1 && S.ph === "play") {
       honeyClock -= 1;
-      slots.forEach(sl => { if (mineSlots.size && !mineSlots.has(sl) && !o.allBadges) return; patches(owners, sl).forEach(p => { const n = p.length; floats.push({ x: p.reduce((a, f) => a + f.x, 0) / n, y: p.reduce((a, f) => a + f.y, 0) / n - 20, txt: "+" + n * n, col: PC[sl], life: 1, big: n > 1 }); }); });
+      slots.forEach(sl => { if (mineSlots.size && !mineSlots.has(sl) && !o.allBadges) return; patches(owners, sl).forEach(p => { const n = p.length; if (n < 2 && !o.allBadges) return; floats.push({ x: p.reduce((a, f) => a + f.x, 0) / n, y: p.reduce((a, f) => a + f.y, 0) / n - 20, txt: "+" + n * n, col: PC[sl], life: 1, big: n > 1 }); }); });
     }
     if (honeyClock > 2) honeyClock = 0;
     // spiders
@@ -556,7 +622,7 @@ const Garden = (() => {
       if (p[0] === "b" && p[3] >= 1) { const k = (p[3] - 1) * 1.8 / 1.2; Art.bird(ctx, p[1] + k * 700 - 120, p[2] - k * 420 + 60, -.55, 1.4); }
     });
     // ambient butterflies
-    flies.forEach((f, i) => {
+    if (o.ambient !== false) flies.forEach((f, i) => {
       f.a += (Math.sin(t * .5 + i) * .8) * dt; f.x += Math.cos(f.a) * f.s * dt; f.y += Math.sin(f.a) * f.s * dt;
       if (f.x < 40 || f.x > world.W - 40) f.a = Math.PI - f.a; if (f.y < 40 || f.y > world.H - 40) f.a = -f.a;
       f.x = Math.max(40, Math.min(world.W - 40, f.x)); f.y = Math.max(40, Math.min(world.H - 40, f.y));
@@ -606,7 +672,8 @@ const Smooth = (() => {
     const span = b1.at - b0.at || 1, u = Math.max(0, Math.min(1, (now - b0.at) / span));
     const byId = new Map(b0.bees.map(b => [b.id, b]));
     const bees = b1.bees.map(b => {
-      const a = byId.get(b.id), meta = info.get(b.id) || {}, out = { ...b, slot: meta.slot, name: meta.name };
+      const a = byId.get(b.id), meta = info.get(b.id) || info.get("s" + b.seat) || {},   // a newly hatched bee: its hive's colour and name
+      out = { ...b, slot: meta.slot, name: meta.name };
       if (!a) return out;
       if (a.st === 0 && b.st === 0 && a.f === b.f && world) {
         let da = b.ang - a.ang; if (da > Math.PI) da -= TAU; if (da < -Math.PI) da += TAU;

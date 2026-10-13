@@ -25,6 +25,9 @@ cloak coloured by what meeting them would do to your purse right now:
 
 Only the colour level is sent, never anyone's actual gold.
 
+The screen stays clean: the colour key is not drawn over the garden but sits behind the **?** button
+(with the rules), and no label floats over your own figure until you have banked gold.
+
 **The whole map** uses the garden's own pictures, kept small (about a corridor wide) so the
 hedges and turns stay readable: the same cloaked walkers, little chests of both kinds (bonus
 chests glow violet), and the golden temple idol at the heart.
