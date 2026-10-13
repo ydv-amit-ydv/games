@@ -363,6 +363,7 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
   <p style="text-align:center;margin-top:4px">until the gates open</p>
   <div class="statrow"><span>Runners waiting</span><b id="wcount">1</b></div>
   <div class="statrow"><span>Level</span><b id="wstage">The Forest</b></div>
+  <p id="netState" style="text-align:center;margin:6px 0 0;font-size:13px;opacity:.8;display:none"></p>
 </div></div>
 
 <div id="elim" class="ov"><div class="sheet">
@@ -376,11 +377,11 @@ canvas#g{position:fixed;inset:0;width:100%;height:100%;display:block}
   <ol id="champList"></ol>
 </div></div>
 
-<script src="painted.js"></script>
-<script src="atlas.js"></script>
-<script src="world.js"></script>
-<script src="sim.js"></script>
-<script src="net.js"></script>
+<script src="painted.js?v=7"></script>
+<script src="atlas.js?v=7"></script>
+<script src="world.js?v=7"></script>
+<script src="sim.js?v=7"></script>
+<script src="net.js?v=7"></script>
 <script>
 'use strict';
 const QS = new URLSearchParams(location.search);
@@ -1661,6 +1662,17 @@ function start() {
   connect();
 }
 $('go').onclick = start;
+// browser mode: tell the host whether other devices can reach this tab yet
+let netSince = 0;
+setInterval(() => {
+  const h = Net.hosting, el = $('netState');
+  if (!h || h.practice || Net.mode !== 'browser') { el.style.display = 'none'; netSince = 0; return; }
+  if (!netSince) netSince = Date.now();
+  el.style.display = 'block';
+  el.textContent = h.online ? 'Open to other devices. Keep this tab open and in front until the tournament ends.'
+    : Date.now() - netSince > 15000 ? 'Not reachable yet: check this device\'s internet connection. Still trying…'
+    : 'Opening the tournament to other devices…';
+}, 1000);
 $('practice').addEventListener('click', () => {
   name = $('nm').value.trim() || 'You';
   try { localStorage.setItem('garden_name', name); } catch (e) {}

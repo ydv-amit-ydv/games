@@ -63,6 +63,22 @@ trying for 30 seconds). Codes ignore spaces, dashes and lower case, and never us
 To use a self-run PeerJS server instead of the public one, add `?broker=host:port` to the address
 (`npx peer --port 9000`); `?broker=public` switches back.
 
+**If joining fails**, the message ends with how far it got, for example
+`(helper ✓ · service ✓ · garden ✓ · link no route found)`:
+
+| Step | ✗ means |
+|---|---|
+| helper | the connection script could not load (offline, or both CDNs blocked) |
+| service | the PeerJS broker could not be reached from this network |
+| tournament | no host is registered under that code right now (wrong code, or the host's tab is asleep or closed) |
+| link | the host answered, but the two networks would not let the browsers link up |
+
+The link step tries a direct route first (STUN), then free relays (TURN), including one over
+TCP/TLS on port 443, which nearly every network allows. Free relays can be busy. For an event, add
+your own: create a free account at a TURN provider (for example Metered), then open the game once
+on each device with `?turn=turns:YOUR-HOST:443?transport=tcp|USERNAME|PASSWORD` (remembered on that
+device; `?turn=none` forgets it). Or run server mode on a laptop on the same Wi-Fi, which needs none of this.
+
 ### B. Server mode: `python server.py`
 
 ```bash

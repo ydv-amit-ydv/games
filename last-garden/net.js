@@ -24,10 +24,26 @@ const Net = (() => {
   // ?broker=host:port uses a self-run PeerJS server instead of the public one
   // (remembered on this device; ?broker=public goes back to the public one)
   const BROKER = (() => { try { const q = new URLSearchParams(location.search).get("broker"); if (q) localStorage.setItem("peer-broker", q === "public" ? "" : q); return localStorage.getItem("peer-broker") || ""; } catch (e) { return ""; } })();
+  // How two browsers find a way to each other. STUN servers let them connect
+  // directly when the networks allow it; when they don't (mobile data, carrier
+  // NAT, strict Wi-Fi) the traffic has to go through a relay (TURN). The free
+  // relays are tried over UDP and also over TCP/TLS on port 443, which nearly
+  // every network lets through. Your own relay: ?turn=turns:host:443|user|password
+  // (remembered on this device; ?turn=none forgets it).
+  const TURN = (() => { try { const q = new URLSearchParams(location.search).get("turn"); if (q) localStorage.setItem("peer-turn", q === "none" ? "" : q); return localStorage.getItem("peer-turn") || ""; } catch (e) { return ""; } })();
+  const ICE = [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
+    { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], username: "peerjs", credential: "peerjsp" },
+    { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp", "turns:openrelay.metered.ca:443?transport=tcp"],
+      username: "openrelayproject", credential: "openrelayproject" },
+  ];
+  if (TURN) { const [u, user, cred] = TURN.split("|"); ICE.unshift({ urls: u.split(","), username: user || "", credential: cred || "" }); }
   function peerOpts() {
-    if (!BROKER) return { debug: 0 };
+    const base = { debug: 0, config: { iceServers: ICE, sdpSemantics: "unified-plan", iceCandidatePoolSize: 2 } };
+    if (!BROKER) return base;
     const [h, port] = BROKER.split(":"), local = /^(localhost|127\.|192\.168\.|10\.)/.test(h);
-    return { debug: 0, host: h, port: +port || (local ? 9000 : 443), path: "/", secure: !local };
+    return { ...base, host: h, port: +port || (local ? 9000 : 443), path: "/", secure: !local };
   }
 
   function ready() {
@@ -126,8 +142,11 @@ const Net = (() => {
   // means the host's phone is asleep for a moment, so keep looking for a while.
   const LOOK_FOR = 30000;
   function remote(code, deliver, closed, first) {
-    let peer = null, conn = null, done = false, opened = false, found = false, retry = 0;
+    let peer = null, conn = null, done = false, opened = false, found = false, retry = 0, fails = 0;
     const t0 = Date.now();
+    // how far the join got, for the message if it fails
+    const step = { lib: false, broker: false, host: false, ice: "" };
+    const details = () => `(helper ${step.lib ? "✓" : "✗"} · service ${step.broker ? "✓" : "✗"} · tournament ${step.host ? "✓" : "✗"} · link ${({ "": "✗", new: "no route found", checking: "still trying", failed: "blocked", disconnected: "dropped" })[step.ice] || step.ice})`;
     const api = {
       send: o => { if (conn && conn.open) conn.send(o); },
       close: () => { if (done) return; done = true; clearTimeout(retry); clearTimeout(timer); try { conn && conn.close(); } catch (e) {} try { peer && peer.destroy(); } catch (e) {} closed(); },
@@ -136,8 +155,8 @@ const Net = (() => {
     const wait = msg => { if (!done && !opened) deliver({ t: "netwait", msg }); };
     const giveUp = () => {
       if (opened) return;
-      fail(found ? "Found the tournament but could not connect to it. This network may block games between browsers: try another Wi-Fi or mobile data."
-                 : `No tournament with the code ${code} is open right now. Check the letters, and that the host has it open and in front.`);
+      fail(found ? `Found the tournament but the two browsers could not link up: one of the networks blocks it. Try the same Wi-Fi for everyone, or mobile data. ${details()}`
+                 : `No tournament with the code ${code} is open right now. Check the letters, and that the host has it open and in front. ${details()}`);
     };
     const timer = setTimeout(giveUp, LOOK_FOR);
     const dial = () => {
@@ -149,13 +168,22 @@ const Net = (() => {
       c.on("data", d => { if (c === conn) deliver(d); });
       c.on("close", () => { if (c === conn && opened) api.close(); });
       c.on("error", () => {});
+      // watch the browser-to-browser link: anything past "new" means the host answered
+      const watch = setInterval(() => {
+        if (c !== conn || done || opened) { clearInterval(watch); return; }
+        const pc = c.peerConnection; if (!pc) return;
+        step.ice = pc.iceConnectionState;
+        if (pc.remoteDescription || step.ice !== "new") { step.host = true; found = true; }   // the host answered
+        if (step.ice === "failed") { clearInterval(watch); fails++; if (fails >= 2) giveUp(); else { clearTimeout(retry); dial(); } }
+      }, 500);
       // the host answered on the broker but the browsers have not linked yet: give it time, then dial again
       retry = setTimeout(() => { if (!opened) { found = true; wait(`Connecting to tournament ${code}…`); dial(); } }, 9000);
     };
     loadPeer().then(Peer => {
       if (done) return;
+      step.lib = true;
       peer = new Peer(peerOpts());
-      peer.on("open", dial);
+      peer.on("open", () => { step.broker = true; dial(); });
       peer.on("error", err => {
         const type = err && err.type;
         if (done || opened) return;
