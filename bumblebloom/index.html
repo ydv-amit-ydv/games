@@ -141,6 +141,8 @@ input:focus { outline: none; border-color: #5fbb56; }
 #count small:empty { display: none; }
 #count b { font: 700 clamp(4rem, 18vw, 9rem) var(--f-display); color: #fff; text-shadow: 0 6px 30px rgba(30,68,35,.5); }
 @media (max-width: 640px) { #board { display: none; } #help { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } #me { min-width: 0; } #toast { top: calc(96px + env(safe-area-inset-top, 0px)); font-size: .85rem; } }
+/* phones: drop the bee status lines (free bees, hatching progress) and shrink the clock so the notifications have room */
+@media (max-width: 640px) { #game:not(.local) #free, #game:not(.local) #grow { display: none; } #clock { font-size: .85rem; padding: 4px 10px; } #clock small { font-size: .56rem; } .hud { gap: 6px; padding-top: calc(6px + env(safe-area-inset-top, 0px)); } #toast { top: calc(58px + env(safe-area-inset-top, 0px)); } }
 
 /* ---------- several players on one device ---------- */
 kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; background: #fff; color: var(--ink); }
