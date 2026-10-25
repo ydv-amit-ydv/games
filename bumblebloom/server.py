@@ -18,7 +18,7 @@ The game
 
   Hives: in a solo game your hive grows with the garden it holds - one bee
   to start, a 2nd at 3 flowers, a 3rd at 5, a 4th at 7 - and a bee flies home
-  if you stay below its step for 8 s. Bots grow the same way but never have
+  if you stay below its step for 5 s. Bots grow the same way but never have
   more bees than you, and get sharper as you get stronger. With friends,
   every hive has 2 bees in round 1 and 3 in round 2; the best 4 hives play
   the final with 3 bees and a 4th to unlock at 6 flowers. New flowers sprout
@@ -37,7 +37,7 @@ The game
   Sting dash: tap Sting and your next (or current) flight becomes a fast
   dash; the first rival it touches loses 35 health and goes dizzy. If that
   bee faints within a few seconds, the honey it drops goes to you (the
-  bounty). Each bee's sting then recharges for 3 s on its own.
+  bounty). Each bee's sting then recharges for 2 s on its own.
   Fortified patches: a patch of 4+ joined flowers grows a hedge, and its
   flowers take 3 loops to steal instead of 2.
 
@@ -71,7 +71,7 @@ GROW_STEPS = (0, 3, 5, 7)
 # with one more bee to unlock by holding 6 flowers. A single round plays like the final.
 ROUNDS = [{"name": "Round 1", "bees": 2}, {"name": "Round 2", "bees": 3},
           {"name": "Final", "bees": 3, "bonus": 6, "top": 4}]
-SHRINK_GRACE = 8.0                  # below a step this long and that bee flies home
+SHRINK_GRACE = 5.0                  # below a step this long and that bee flies home
 MAX_BEES = 4
 
 # ---- the garden grows during a round
@@ -120,7 +120,7 @@ WEB_DPS = 18
 
 # ---- sting dash
 STING_DMG = 35
-STING_CD = 3.0                      # seconds before a bee can sting again (each bee has its own)
+STING_CD = 2.0                      # seconds before a bee can sting again (each bee has its own)
 STING_SPEED = 1.45                  # a dash flies this much faster than a normal flight
 STING_REACH = BEE_R * 2.6           # a little more forgiving than a bump
 STING_DIZZY = 1.0

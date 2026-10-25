@@ -202,7 +202,7 @@ Tap **Sting** (or press **E**; in two-on-one-screen mode, the Sting chip on your
   A dash at a rival's flower strikes whoever is circling it.
 - **Bounty:** if a bee you stung or bumped faints within 4 seconds, the honey it drops
   (15% of its honey) goes to you, and the toast says so.
-- Then **that bee's sting recharges for 3 seconds**. With several bees, each bee has its own
+- Then **that bee's sting recharges for 2 seconds**. With several bees, each bee has its own
   recharge: one press of Sting is one dash (the button is used up for all your bees), but a bee
   whose sting is ready can dash while another is still recharging. A dash that hits nobody ends when you land.
 - While armed, your stinger glows and the aim line turns red ("sting dash here").
@@ -238,7 +238,7 @@ Every player is a **hive** of 1 to 4 bees.
 | 5 | 3 |
 | 7 | 4 (the most) |
 
-Drop below a step and stay there for **8 seconds** and that bee flies home (your card warns you
+Drop below a step and stay there for **5 seconds** and that bee flies home (your card warns you
 first); win the flowers back and it hatches again. Your card shows the next step, e.g.
 "4 of 5 flowers for your 3rd bee".
 
@@ -264,7 +264,7 @@ of the flowers are open at the start; the rest **sprout during the round** and s
 - Your card shows the bees as dots, filled when free (`●●○ 2 of 3 free`), and a health bar for each.
 - If none is free, the tap does nothing and a small note says *All your bees are busy pollinating*.
   Tapping again a flower one of your bees is already taking sends another free bee to help (see Teamwork).
-- Your bees pass through each other. Each bee recharges its own sting (3 s); an orange ring on
+- Your bees pass through each other. Each bee recharges its own sting (2 s); an orange ring on
   its dot means that bee's sting is ready, and the button says how many are ready ("2 of 3 ready").
   Pressing Sting arms your next flight by a bee whose sting is ready. Fainting drops honey split between your bees
   (15% ÷ the number of bees each).

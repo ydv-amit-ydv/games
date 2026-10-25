@@ -21,7 +21,7 @@ const BloomSim = (() => {
   // how many bees a hive has (see server.py): solo hives grow with their flowers, friends' rounds are fixed
   const GROW_STEPS = [0, 3, 5, 7];
   const ROUNDS = [{ name: "Round 1", bees: 2 }, { name: "Round 2", bees: 3 }, { name: "Final", bees: 3, bonus: 6, top: 4 }];
-  const SHRINK_GRACE = 8, MAX_BEES = 4;
+  const SHRINK_GRACE = 5, MAX_BEES = 4;
   // the garden grows during a round
   const START_SHARE = .65, SPROUT_FIRST = 10;
   // bot skill: pause before moving on (s), chance of a random pick, of not checking the flytrap path, of stinging
@@ -42,7 +42,7 @@ const BloomSim = (() => {
   const HP_MAX = 100, HEAL_PER_S = 7, FAINT_SECONDS = 3, FAINT_HONEY_LOSS = .15, SAFE_SECONDS = 1.5, DIZZY_SECONDS = 1.6;
   const BUMP_DMG = 10, TRAP_DMG = 35, DRAGON_DMG = 25, BIRD_DMG = 45, WEB_DPS = 18, TRAP_R = 24;
   // sting dash and fortified patches (see server.py)
-  const STING_DMG = 35, STING_CD = 3, STING_SPEED = 1.45, STING_REACH = BEE_R * 2.6, STING_DIZZY = 1, BOUNTY_WINDOW = 4;
+  const STING_DMG = 35, STING_CD = 2, STING_SPEED = 1.45, STING_REACH = BEE_R * 2.6, STING_DIZZY = 1, BOUNTY_WINDOW = 4;
   const FORTIFY_SIZE = 4, FORTIFY_LOOPS = 3;
   // teamwork: each extra bee of yours circling a flower you are taking adds this much speed
   const CO_POLLEN = .8;
