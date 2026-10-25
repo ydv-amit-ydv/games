@@ -545,7 +545,7 @@ cvEl.addEventListener("pointerdown", e => {
   const [px, py] = pt(e), f = Garden.flowerAt(px, py);
   if (shared()) {
     const bee = beeUnder(px, py), seat = bee && seats.find(s => s.id === bee.seat);
-    if (!seat || seat.drag) { if (f >= 0) toast("Swipe from one of your own bees to a flower"); return; }
+    if (!seat || seat.drag) { return; }
     try { cvEl.setPointerCapture(e.pointerId); } catch (err) {}
     swipes.set(e.pointerId, seat); seat.drag = true; seat.aim = -1; seat.from = f; seat.dragBee = bee.id;
     if (seat.el) seat.el.classList.add("down");
@@ -575,7 +575,7 @@ function stepPick(seat) {
   // the bee that will go: the one already picked, else a free one (with one bee: that bee)
   const webs = webbed(lastS), mine = beesOf(lastS, seat);
   const b = (seat.pick != null && mine.find(x => x.id === seat.pickBee)) || mine.find(x => isFree(lastS, x, webs));
-  if (!b || !(b.st === 0 || b.st === 1)) { if (mine.length > 1) toast("All your bees are busy pollinating - wait for one to finish"); return; }
+  if (!b || !(b.st === 0 || b.st === 1)) { return; }
   seat.pickBee = b.id;
   if (!seat.list || seat.pick == null) { seat.list = Garden.nearestFlowers(b); seat.pi = 0; }
   else seat.pi = (seat.pi + 1) % seat.list.length;
@@ -737,9 +737,7 @@ function hud(S) {
       put($("mystats"), `<span class="rate">+${st.rate} honey/s</span> = ${sum}`);
       paintSting($("stingbtn"), mine, true);
       // the hint: the first few seconds, and whenever something needs saying
-      const msg = mine.length > 1 && !freeN ? "All your bees are busy pollinating…"
-        : mine.length === 1 && mb.st === 2 ? "Dizzy… back in a moment" : mine.length === 1 && mb.st === 3 ? "Fainted… back in a moment"
-        : performance.now() < hintUntil ? (mine.length > 1 ? "Tap a flower: your nearest free bee goes" : touchy() ? "Tap a flower to fly there" : "Click a flower to fly there (or Space to pick)") : "";
+      const msg = performance.now() < hintUntil ? (mine.length > 1 ? "Tap a flower: your nearest free bee goes" : touchy() ? "Tap a flower to fly there" : "Click a flower to fly there (or Space to pick)") : "";
       putText($("hint"), msg); $("hint").classList.toggle("off", !msg);
     } else if (watching) { putText($("hint"), `Watching the final: the best ${lvl.top || 4} hives play it`); $("hint").classList.remove("off"); }
   }
