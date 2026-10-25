@@ -518,7 +518,7 @@ function showResults(m) {
 const shared = () => seats.length > 1;
 const touchy = () => matchMedia("(pointer: coarse)").matches;
 let lastS = null, hover = -1;
-function fly(seat, f, b) { if (seat && f >= 0) send(seat, b != null ? { t: "to", f, b } : { t: "to", f }); }
+function fly(seat, f, b) { if (seat && f >= 0 && lastS) { const bee = b != null ? { id: b } : nearestFree(lastS, seat, f); if (bee) Smooth.launch(bee.id, f); } if (seat && f >= 0) send(seat, b != null ? { t: "to", f, b } : { t: "to", f }); }
 function aims() {
   const out = [];
   seats.forEach(seat => {

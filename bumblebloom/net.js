@@ -162,11 +162,11 @@ const Net = (() => {
       h.relay = Relay.host({
         prefix: RELAY_PREFIX, code: () => h.code, connect: link => h.sim.connect(link),
         onState: up => { if (up) status("online", h.code); },
-        // the relay gets two snapshots in three (about 13 a second: smoother than 10, still kind to a free broker);
+        // the relay gets four snapshots in five (about 16 a second);
         // effects, notices and flower owners from a skipped one ride on the next
         thin: m => {
           if (m.t !== "s") return m;
-          skip = ++n % 3 === 0;
+          skip = ++n % 5 === 0;
           if (skip) { carry = carry || { fx: [], toast: null, o: null }; if (m.fx) carry.fx.push(...m.fx); if (m.toast) carry.toast = m.toast; if (m.o) carry.o = m.o; return null; }
           if (!carry) return m;
           const o = { ...m }, fx = [...carry.fx, ...(m.fx || [])]; if (fx.length) o.fx = fx; if (!o.toast && carry.toast) o.toast = carry.toast; if (!o.o && carry.o) o.o = carry.o;

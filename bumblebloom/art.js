@@ -654,7 +654,7 @@ const Garden = (() => {
 const Smooth = (() => {
   let buf = [], gap = 50, jit = 0, owners = [];
   // play this far behind the newest snapshot: one gap plus a margin for jitter, so a steady link stays close to live and a wobbly one still looks smooth
-  const delay = () => Math.max(90, Math.min(400, gap * 1.4 + jit * 2.5));
+  const delay = () => Math.max(70, Math.min(400, gap * 1.25 + jit * 2.2));
   function push(m, world) {
     const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18], seat: a[19], total: a[20] }));
     const at = performance.now();
@@ -663,7 +663,9 @@ const Smooth = (() => {
     buf.push({ at, m, bees });
     if (buf.length > 12) buf.shift();
   }
-  function reset() { buf = []; owners = []; }
+  const launches = new Map();           // bee id -> { f, at }: a tap the host has not confirmed yet
+  function launch(id, f) { if (id != null && f >= 0) launches.set(id, { f, at: performance.now() }); }
+  function reset() { buf = []; owners = []; launches.clear(); }
   function sample(world, info) {
     if (!buf.length) return null;
     const now = performance.now() - delay();
@@ -681,11 +683,20 @@ const Smooth = (() => {
         const ang = a.ang + da * u, rad = a.rad + (b.rad - a.rad) * u, f = world.fl[b.f];
         out.ang = ang; out.x = f.x + Math.cos(ang) * rad; out.y = f.y + Math.sin(ang) * rad;
       } else { out.x = a.x + (b.x - a.x) * u; out.y = a.y + (b.y - a.y) * u; out.vx = a.vx + (b.vx - a.vx) * u; out.vy = a.vy + (b.vy - a.vy) * u; }
+      const L = launches.get(b.id);
+      if (L) {                                                      // show the takeoff now; the host's word replaces it as soon as it arrives
+        const age = performance.now() - L.at, fl = world && world.fl[L.f];
+        if (!fl || age > 600 || (b.st !== 0 && b.target === L.f) || (b.st !== 0 && b.st !== 1)) launches.delete(b.id);
+        else if (b.st === 0) {
+          const sx = out.x, sy = out.y, dx = fl.x - sx, dy = fl.y - sy, d = Math.hypot(dx, dy) || 1, run = Math.min(d, 320 * age / 1000);
+          out.x = sx + dx / d * run; out.y = sy + dy / d * run; out.vx = dx / d * 320; out.vy = dy / d * 320; out.st = 1; out.target = L.f;
+        }
+      }
       return out;
     });
     const p1 = b1.m.p || [], p0 = new Map((b0.m.p || []).map(p => [p[0] + (p[0] === "s" ? p[1] : p[4]), p]));
     const preds = p1.map(p => { const q = p0.get(p[0] + (p[0] === "s" ? p[1] : p[4])); if (!q || p[0] !== "d") return p; return [p[0], q[1] + (p[1] - q[1]) * u, q[2] + (p[2] - q[2]) * u, p[3], p[4]]; });
     return { b: bees, o: b1.m.o, p: preds, left: b1.m.left, ph: b1.m.ph };
   }
-  return { push, sample, reset };
+  return { push, sample, reset, launch };
 })();
