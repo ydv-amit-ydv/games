@@ -105,6 +105,7 @@ input:focus { outline: none; border-color: #5fbb56; }
 #mystats { font-size: .8rem; color: var(--muted); font-weight: 700; line-height: 1.35; }
 #mystats b { color: var(--ink); }
 #mystats .rate { color: var(--gold); font-weight: 800; font-size: .95rem; }
+#sndbtn { pointer-events: auto; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.16); font-size: 1.1rem; cursor: pointer; padding: 0; }
 #helpbtn { pointer-events: auto; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.16); font: 800 1.2rem var(--f-body); color: var(--ink); cursor: pointer; }
 #help { position: absolute; left: 12px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); width: min(330px, calc(100vw - 24px)); display: none; gap: 8px; pointer-events: auto; }
 #help.on { display: grid; }
@@ -140,9 +141,9 @@ input:focus { outline: none; border-color: #5fbb56; }
 #count small { font: 800 1.1rem var(--f-body); color: #fff; max-width: 30em; background: rgba(30,68,35,.62); border-radius: 14px; padding: 8px 14px; }
 #count small:empty { display: none; }
 #count b { font: 700 clamp(4rem, 18vw, 9rem) var(--f-display); color: #fff; text-shadow: 0 6px 30px rgba(30,68,35,.5); }
-@media (max-width: 640px) { #board { display: none; } #help { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } #me { min-width: 0; } #toast { top: calc(96px + env(safe-area-inset-top, 0px)); font-size: .85rem; } }
+@media (max-width: 640px) { #board { display: none; } #help { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } #me { min-width: 0; } #toast { display: none; } }
 /* phones: drop the bee status lines (free bees, hatching progress) and shrink the clock so the notifications have room */
-@media (max-width: 640px) { #game:not(.local) #free, #game:not(.local) #grow { display: none; } #clock { font-size: .85rem; padding: 4px 10px; } #clock small { font-size: .56rem; } .hud { gap: 6px; padding-top: calc(6px + env(safe-area-inset-top, 0px)); } #toast { top: calc(58px + env(safe-area-inset-top, 0px)); } }
+@media (max-width: 640px) { #game:not(.local) #free, #game:not(.local) #grow { display: none; } #clock { font-size: .85rem; padding: 4px 10px; } #clock small { font-size: .56rem; } .hud { gap: 6px; padding-top: calc(6px + env(safe-area-inset-top, 0px)); }  }
 
 /* ---------- several players on one device ---------- */
 kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; background: #fff; color: var(--ink); }
@@ -157,7 +158,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
 .edge .act { font-weight: 800; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c); filter: brightness(.8); }
 .edge .hp { height: 7px; }
 .edge .st { font-size: .72rem; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
-#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #hint, #game.local #stingbtn, #game.local #toast { display: none; }
+#game.local #me, #game.local #board, #game.local #helpbtn, #game.local #sndbtn, #game.local #hint, #game.local #stingbtn, #game.local #toast { display: none; }
 #stingbtn { position: absolute; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); min-width: 118px; min-height: 52px; border: 0; border-radius: 999px;
   font: 800 .95rem var(--f-body); color: #fff; background: linear-gradient(180deg, #ff7a45, #d9411e); box-shadow: 0 5px 0 #9c2a10, 0 8px 20px rgba(0,0,0,.25);
   cursor: pointer; padding: 0 18px; touch-action: manipulation; }
@@ -241,7 +242,7 @@ kbd { font: 800 .8em var(--f-body); border: 1px solid #cfe3c4; border-bottom-wid
   <div class="hud">
     <div class="card" id="me"><div class="top"><i id="mydot"></i><span id="myname">You</span></div><div class="hps" id="hps" aria-label="Health"></div><div id="free"></div><span id="honey">0 honey</span><div id="grow"></div><div id="mystats"></div></div>
     <div class="card" id="clock"><span id="clockt">2:00</span><small id="clockl"></small></div>
-    <div style="display:grid;gap:8px;justify-items:end"><div class="card" id="board"></div><button id="helpbtn" type="button" aria-label="How honey works">?</button></div>
+    <div style="display:grid;gap:8px;justify-items:end"><div class="card" id="board"></div><button id="helpbtn" type="button" aria-label="How honey works">?</button><button id="sndbtn" type="button" aria-label="Sound on or off">🔊</button></div>
   </div>
   <div class="card" id="help">
     <h3>How honey is counted</h3>
@@ -420,12 +421,64 @@ function onMessage(seat, m) {
       break;
     case "s":
       Smooth.push(m);
-      if (m.fx) Garden.fx(m.fx);
+      if (m.fx) { Garden.fx(m.fx); Snd.fx(m.fx, seats.map(s => s.slot)); }
       if (m.toast) toast(m.toast);
       break;
     case "end": showResults(m); break;
   }
 }
+
+// ---- sounds: small synthesized blips, no files to load
+const Snd = (() => {
+  let ac = null, on = store.get("bb-snd") !== "0", lastAt = {}, master = null;
+  const ctxOf = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); master = ac.createGain(); master.gain.value = .5; master.connect(ac.destination); } catch (e) { ac = false; } } return ac || null; };
+  function unlock() { const c = ctxOf(); if (c && c.state === "suspended") c.resume(); }
+  function tone(f0, f1, dur, vol, type = "sine", delay = 0) {
+    const c = ctxOf(); if (!c || !on) return;
+    const t = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .02);
+  }
+  function noise(dur, vol, lo) {
+    const c = ctxOf(); if (!c || !on) return;
+    const n = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource(), g = c.createGain(), f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = lo;
+    s.buffer = buf; g.gain.value = vol; s.connect(f); f.connect(g); g.connect(master); s.start();
+  }
+  const SOUNDS = {
+    bloom: m => { tone(660, 660, .12, m ? .22 : .08, "triangle"); tone(990, 990, .16, m ? .2 : .07, "triangle", .07); if (m) tone(1320, 1320, .2, .16, "triangle", .14); },
+    sprout: () => tone(300, 620, .14, .1, "sine"),
+    power: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, f, .18, .17, "square", i * .06)); },
+    boost: m => tone(400, 1400, .22, m ? .2 : .09, "sawtooth"),
+    sting: () => { noise(.18, .35, 2200); tone(900, 200, .18, .16, "sawtooth"); },
+    faint: m => tone(500, 120, .45, m ? .22 : .1, "sine"),
+    snap: () => { noise(.12, .3, 900); tone(180, 90, .15, .2, "square"); },
+    hatch: () => { tone(520, 780, .12, .14, "triangle"); tone(780, 1040, .14, .12, "triangle", .08); },
+    fade: () => tone(500, 250, .25, .07, "sine"),
+    swoop: () => noise(.25, .25, 1500),
+  };
+  return {
+    unlock,
+    get on() { return on; },
+    toggle() { on = !on; store.set("bb-snd", on ? "1" : "0"); if (on) { unlock(); tone(880, 880, .08, .15, "triangle"); } return on; },
+    // events from the host; the ones about you are louder, and no kind repeats within 70 ms
+    fx(list, mine) {
+      if (!on || !ctxOf()) return;
+      const now = performance.now();
+      for (const [k, , , slot] of list) {
+        const fn = SOUNDS[k]; if (!fn || now - (lastAt[k] || 0) < 70) continue;
+        lastAt[k] = now; fn(mine.includes(slot));
+      }
+    },
+    tick(final) { if (final) { tone(880, 880, .09, .18, "square"); } else { tone(1320, 660, .5, .2, "triangle"); tone(330, 330, .5, .12, "sine"); } },
+  };
+})();
+addEventListener("pointerdown", Snd.unlock, { once: true, passive: true });
+addEventListener("keydown", Snd.unlock, { once: true });
+$("sndbtn").textContent = Snd.on ? "🔊" : "🔇";
+$("sndbtn").addEventListener("click", () => { $("sndbtn").textContent = Snd.toggle() ? "🔊" : "🔇"; });
 
 const seatIds = () => seats.filter(s => s.id != null).map(s => s.id);
 // bees (workers) of one seat in a snapshot, and which of them may take an order
@@ -720,6 +773,7 @@ function growLine(flowers, have) {
   return "";
 }
 const ordinal = n => ({ 1: "1st", 2: "2nd", 3: "3rd" })[n] || n + "th";
+let lastSec = -1;
 function hud(S) {
   const stats = Garden.stats(S.o), webs = webbed(S);
   const me = seats[0], mine = beesOf(S, me), mb = mine[0];
@@ -752,6 +806,10 @@ function hud(S) {
   const left = S.left ?? 0; putText($("clockt"), Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0"));
   putText($("clockl"), lvl.of > 1 ? `${lvl.name} · ${lvl.idx + 1}/${lvl.of}` : "");
   $("clock").classList.toggle("low", left < 15 && S.ph === "play");
+  if (S.ph === "play") {
+    const sec = Math.ceil(left);
+    if (sec !== lastSec) { if (sec === 15) Snd.tick(false); else if (sec <= 5 && sec > 0) Snd.tick(true); lastSec = sec; }
+  } else lastSec = -1;
   if (!shared()) {
     // one row per hive, however many bees it has
     const bySeat = new Map(); S.b.forEach(b => { if (!bySeat.has(b.seat)) bySeat.set(b.seat, b); });

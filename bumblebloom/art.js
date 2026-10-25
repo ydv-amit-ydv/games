@@ -302,7 +302,7 @@ const Art = (() => {
 const Garden = (() => {
   const M = 120;               // meadow margin around the hedge, for trees and beds
   let bgId = 0, openN = 0;         // openN: flowers open so far (the rest sprout during the round)                    // which background the backdrop layer currently shows
-  let world = null, bg = null, parts = [], flies = [], flash = [], floats = [], honeyClock = 0;
+  let emojis = [], world = null, bg = null, parts = [], flies = [], flash = [], floats = [], honeyClock = 0;
   const BGS = 1.25;
 
   function setup(w) {
@@ -310,7 +310,7 @@ const Garden = (() => {
     world.fl = w.flowers.map(([x, y, r]) => ({ x, y, r, R: r + 26 }));
     flash = world.fl.map(() => 0);
     openN = w.open != null ? w.open : world.fl.length;
-    parts = [];
+    parts = []; emojis = [];
     bg = paintBackground(); bgId++;
     const R = Art.rng(w.seed + 99);
     flies = Array.from({ length: 5 }, (_, i) => ({ x: R() * w.W, y: R() * w.H, a: R() * TAU, s: 30 + R() * 30, col: ["#f0812a", "#8e63d8", "#18a9b8", "#e8629b", "#f2b705"][i] }));
@@ -408,6 +408,7 @@ const Garden = (() => {
 
   function addFx(list) {
     for (const [k, x, y, slot] of list) {
+      if (EMOJI[k]) emoji(EMOJI[k], x, y);
       const col = slot >= 0 ? PC[slot] : "#ffffff";
       if (k === "bloom") { const fi = world.fl.findIndex(f => Math.abs(f.x - x) < 2 && Math.abs(f.y - y) < 2); if (fi >= 0) flash[fi] = 1; burst(x, y, 18, () => ({ col, shape: "petal", v: 60 + Math.random() * 130 })); }
       else if (k === "hit") burst(x, y, 10, () => ({ col: "#e8504f", shape: "spark", v: 60 + Math.random() * 120 }));
@@ -419,9 +420,15 @@ const Garden = (() => {
       else if (k === "hatch") burst(x, y, 16, () => ({ col: Math.random() < .5 ? col : "#f6c445", shape: "star", v: 50 + Math.random() * 110 }));
       else if (k === "home") burst(x, y, 10, () => ({ col: "rgba(255,255,255,.9)", shape: "puff", v: 20 + Math.random() * 40 }));
       else if (k === "land") burst(x, y, 6, () => ({ col: "#f6c445", shape: "dot", v: 20 + Math.random() * 50 }));
+      else if (k === "power") { burst(x, y, 20, () => ({ col: "#ffd23d", shape: "star", v: 60 + Math.random() * 120 })); emoji("⭐", x, y); }
+      else if (k === "boost") { burst(x, y, 8, () => ({ col: "#ffe680", shape: "spark", v: 80 + Math.random() * 120 })); emoji("⚡", x, y); }
+      else if (k === "fade") burst(x, y, 10, () => ({ col: "rgba(255,255,255,.9)", shape: "puff", v: 20 + Math.random() * 40 }));
       else if (k === "swoop") burst(x, y, 22, () => ({ col: "#5a6670", shape: "feather", v: 80 + Math.random() * 160 }));
     }
   }
+  // a little emoji drifts up from the spot where something happened
+  const EMOJI = { bloom: "🌸", sprout: "🌱", sting: "💥", faint: "💫", snap: "😵", hatch: "🐝" };
+  function emoji(e, x, y) { if (emojis.length < 24) emojis.push({ e, x: x + (Math.random() - .5) * 16, y: y - 10, life: 1 }); }
   function burst(x, y, n, f) { for (let i = 0; i < n; i++) { const o = f(), a = Math.random() * TAU; parts.push({ x, y, vx: Math.cos(a) * o.v, vy: Math.sin(a) * o.v, rot: a, life: 1, col: o.col, shape: o.shape }); } }
 
   function segDist(ax, ay, bx, by, px, py) {
@@ -566,6 +573,22 @@ const Garden = (() => {
       ctx.restore();
     });
     parts = parts.filter(p => p.life > 0);
+    // the power flower: a pulsing gold ring that closes as its time runs out
+    if (S.pw && world.fl[S.pw[0]]) {
+      const f = world.fl[S.pw[0]], k = Math.max(0, Math.min(1, S.pw[1] / 12)), pulse = Math.sin(t * 6);
+      ctx.save(); ctx.translate(f.x, f.y);
+      const g = ctx.createRadialGradient(0, 0, f.r, 0, 0, f.r + 34 + pulse * 5); g.addColorStop(0, "rgba(255,214,70,.55)"); g.addColorStop(1, "rgba(255,214,70,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, f.r + 34 + pulse * 5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#ffd23d"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, f.r + 18, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke();
+      ctx.font = "22px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("⭐", 0, -f.r - 28 + pulse * 3);
+      ctx.restore();
+    }
+    // floating emojis
+    if (emojis.length) {
+      ctx.save(); ctx.font = "22px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      emojis.forEach(m => { m.y -= 55 * dt; m.life -= dt * .85; ctx.globalAlpha = Math.max(0, Math.min(1, m.life * 1.5)); ctx.fillText(m.e, m.x, m.y); });
+      ctx.restore(); emojis = emojis.filter(m => m.life > 0);
+    }
     // honey badges: every patch says what it is earning
     const mineSlots = new Set(o.mineSlots || (o.meSlot != null ? [o.meSlot] : []));
     slots.forEach(sl => patches(owners, sl).forEach(p => {
@@ -581,7 +604,7 @@ const Garden = (() => {
     honeyClock += dt;
     if (honeyClock >= 1 && S.ph === "play") {
       honeyClock -= 1;
-      slots.forEach(sl => { if (mineSlots.size && !mineSlots.has(sl) && !o.allBadges) return; patches(owners, sl).forEach(p => { const n = p.length; if (n < 2 && !o.allBadges) return; floats.push({ x: p.reduce((a, f) => a + f.x, 0) / n, y: p.reduce((a, f) => a + f.y, 0) / n - 20, txt: "+" + n * n, col: PC[sl], life: 1, big: n > 1 }); }); });
+      slots.forEach(sl => { if (mineSlots.size && !mineSlots.has(sl) && !o.allBadges) return; patches(owners, sl).forEach(p => { const n = p.length; if (n < 2 && !o.allBadges) return; floats.push({ x: p.reduce((a, f) => a + f.x, 0) / n, y: p.reduce((a, f) => a + f.y, 0) / n - 20, txt: "+" + n * n * (S.left <= 15 ? 2 : 1), col: PC[sl], life: 1, big: n > 1 }); }); });
     }
     if (honeyClock > 2) honeyClock = 0;
     // spiders
@@ -612,6 +635,7 @@ const Garden = (() => {
         ctx.save(); ctx.globalAlpha = .55 + .35 * Math.sin(t * 4); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(0, 0, 17, 0, TAU); ctx.stroke(); ctx.restore();
       }
+      if (b.boost) { ctx.save(); ctx.globalAlpha = .6 + .3 * Math.sin(t * 9); ctx.strokeStyle = "#ffd23d"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.stroke(); ctx.restore(); }
       Art.bee(ctx, 0, 0, ang, PC[b.slot], t + b.slot, { you: mineIds.has(b.id), dizzy: b.st === 2, faint: b.st === 3, safe: b.safe, hp: b.hp });
       ctx.restore();
       if (o.names && b.name) upright(ctx, b.x, b.y, () => { ctx.font = "800 12px Nunito, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.scale(zoom, zoom); ctx.strokeText(b.name, 0, -24); ctx.fillStyle = "#1e4423"; ctx.fillText(b.name, 0, -24); });
@@ -656,7 +680,7 @@ const Smooth = (() => {
   // play this far behind the newest snapshot: one gap plus a margin for jitter, so a steady link stays close to live and a wobbly one still looks smooth
   const delay = () => Math.max(70, Math.min(400, gap * 1.25 + jit * 2.2));
   function push(m, world) {
-    const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18], seat: a[19], total: a[20] }));
+    const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18], seat: a[19], total: a[20], boost: a[21] }));
     const at = performance.now();
     if (buf.length) { const dt = Math.min(500, at - buf[buf.length - 1].at); jit += (Math.abs(dt - gap) - jit) * .1; gap += (dt - gap) * .1; }
     if (m.o) owners = m.o; else m.o = owners;      // owners are sent only when they change
@@ -688,15 +712,15 @@ const Smooth = (() => {
         const age = performance.now() - L.at, fl = world && world.fl[L.f];
         if (!fl || age > 600 || (b.st !== 0 && b.target === L.f) || (b.st !== 0 && b.st !== 1)) launches.delete(b.id);
         else if (b.st === 0) {
-          const sx = out.x, sy = out.y, dx = fl.x - sx, dy = fl.y - sy, d = Math.hypot(dx, dy) || 1, run = Math.min(d, 480 * age / 1000);
-          out.x = sx + dx / d * run; out.y = sy + dy / d * run; out.vx = dx / d * 480; out.vy = dy / d * 480; out.st = 1; out.target = L.f;
+          const sx = out.x, sy = out.y, dx = fl.x - sx, dy = fl.y - sy, d = Math.hypot(dx, dy) || 1, D = L.D || (L.D = d), v = 480 * (1 + Math.max(0, Math.min(.9, (D - 300) / 1000))), run = Math.min(d, v * age / 1000);
+          out.x = sx + dx / d * run; out.y = sy + dy / d * run; out.vx = dx / d * v; out.vy = dy / d * v; out.st = 1; out.target = L.f;
         }
       }
       return out;
     });
     const p1 = b1.m.p || [], p0 = new Map((b0.m.p || []).map(p => [p[0] + (p[0] === "s" ? p[1] : p[4]), p]));
     const preds = p1.map(p => { const q = p0.get(p[0] + (p[0] === "s" ? p[1] : p[4])); if (!q || p[0] !== "d") return p; return [p[0], q[1] + (p[1] - q[1]) * u, q[2] + (p[2] - q[2]) * u, p[3], p[4]]; });
-    return { b: bees, o: b1.m.o, p: preds, left: b1.m.left, ph: b1.m.ph };
+    return { b: bees, o: b1.m.o, p: preds, pw: b1.m.pw, left: b1.m.left, ph: b1.m.ph };
   }
   return { push, sample, reset, launch };
 })();
