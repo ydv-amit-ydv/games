@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Neon Tag</title>
+<style>
+:root { --bg: #0a0b1e; --card: rgba(22,24,56,.92); --ink: #eef0ff; --muted: #8e93c9; --hot: #ff3d6e; color-scheme: dark; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: system-ui, "Segoe UI", Roboto, sans-serif; overflow: hidden; overscroll-behavior: none; }
+.screen { position: absolute; inset: 0; display: none; place-items: center; padding: 20px; overflow-y: auto; background: radial-gradient(circle at 50% 20%, #1b1e55, var(--bg) 70%); }
+.screen.on { display: grid; }
+.panel { width: min(420px, 100%); display: grid; gap: 14px; }
+h1 { margin: 0; text-align: center; font-size: 2.6rem; letter-spacing: .04em; font-weight: 900; color: #fff; text-shadow: 0 0 18px #ff3d6e, 0 0 40px #3d9bff; }
+.sub { margin: 0; text-align: center; color: var(--muted); }
+.card { background: var(--card); border: 1px solid rgba(140,150,255,.25); border-radius: 18px; padding: 16px; display: grid; gap: 10px; }
+input { font: 700 1.1rem inherit; padding: 12px 14px; border-radius: 12px; border: 2px solid #343a85; background: #0d0f2e; color: var(--ink); width: 100%; }
+input.code { text-transform: uppercase; letter-spacing: .25em; text-align: center; }
+button { font: 800 1rem inherit; font-family: inherit; border: 0; border-radius: 14px; padding: 13px 16px; min-height: 48px; color: #fff; cursor: pointer; background: linear-gradient(180deg, #5e6bff, #3a42c9); box-shadow: 0 4px 0 #1f2480; touch-action: manipulation; }
+button.hot { background: linear-gradient(180deg, #ff5d86, #e0214f); box-shadow: 0 4px 0 #8a1030; }
+button.ghost { background: transparent; box-shadow: none; border: 2px solid #343a85; color: var(--muted); }
+button:disabled { opacity: .45; }
+.row { display: flex; gap: 10px; } .row > * { flex: 1; }
+.msg { min-height: 1.3em; text-align: center; color: #ffb3c6; font-weight: 700; }
+.code-big { text-align: center; font: 900 2.4rem ui-monospace, monospace; letter-spacing: .3em; color: #fff; text-shadow: 0 0 14px #3d9bff; }
+.plist { display: grid; gap: 6px; }
+.pl { display: flex; align-items: center; gap: 10px; font-weight: 800; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,.05); }
+.pl i { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.pl em { margin-left: auto; font-style: normal; color: var(--muted); font-size: .8rem; }
+.bots { display: flex; align-items: center; justify-content: space-between; font-weight: 800; }
+.bots div { display: flex; align-items: center; gap: 12px; } .bots button { min-height: 40px; width: 44px; padding: 0; }
+#game canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+#game { display: none; position: absolute; inset: 0; } #game.on { display: block; }
+/* a slim HUD: the clock, your score, and who is IT. Everything else is the arena. */
+#hud { position: absolute; top: calc(6px + env(safe-area-inset-top, 0px)); left: 0; right: 0; display: flex; justify-content: center; gap: 8px; pointer-events: none; font-weight: 800; font-size: .8rem; }
+#hud span { background: rgba(10,11,30,.7); border-radius: 999px; padding: 3px 12px; font-variant-numeric: tabular-nums; }
+#hud .it { color: #ff7a9a; }
+#toast { position: absolute; top: calc(40px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); background: #fff; color: #1a1a3a; font-weight: 900; border-radius: 999px; padding: 6px 16px; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+#toast.on { opacity: 1; }
+#dashbtn { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: 86px; height: 86px; border-radius: 50%; padding: 0; font-size: .95rem; touch-action: none; }
+#dashbtn.wait { filter: grayscale(.9) brightness(.7); }
+#count { position: absolute; inset: 0; display: none; place-items: center; pointer-events: none; font: 900 min(30vw, 9rem) system-ui; color: #fff; text-shadow: 0 0 40px #ff3d6e; }
+#hint { position: absolute; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 120px; color: var(--muted); font-weight: 700; font-size: .85rem; pointer-events: none; transition: opacity .5s; }
+#status { text-align: center; color: var(--muted); font-size: .85rem; min-height: 1.2em; }
+</style>
+</head>
+<body>
+
+<div class="screen on" id="menu">
+  <div class="panel">
+    <h1>NEON TAG</h1>
+    <p class="sub">One orb is IT. Touch someone and pass it on. Score every second you are free.</p>
+    <div class="card">
+      <input id="name" maxlength="12" placeholder="Your name" autocomplete="off">
+      <button class="hot" id="solo">Play with bots</button>
+      <div class="row"><button id="create">Host a game</button></div>
+      <div class="row"><input id="code" class="code" maxlength="6" placeholder="CODE" autocomplete="off" autocapitalize="characters"><button id="join">Join</button></div>
+      <div class="msg" id="menumsg"></div>
+    </div>
+    <p class="sub">Drag anywhere to steer · Space / the button to dash</p>
+  </div>
+</div>
+
+<div class="screen" id="lobby">
+  <div class="panel">
+    <div class="code-big" id="lcode">------</div>
+    <div class="row"><button id="share" class="ghost">Share link</button><button id="leave" class="ghost">Leave</button></div>
+    <div class="card">
+      <div class="plist" id="plist"></div>
+      <div class="bots" id="botsrow"><span>Bots</span><div><button id="bm">−</button><b id="bn">2</b><button id="bp">+</button></div></div>
+      <button class="hot" id="start">Start</button>
+      <div id="status"></div>
+    </div>
+  </div>
+</div>
+
+<div id="game">
+  <canvas id="cv"></canvas>
+  <div id="hud"><span id="hclock">1:00</span><span id="hscore">0</span><span class="it" id="hit"></span></div>
+  <div id="toast"></div>
+  <div id="count"></div>
+  <div id="hint">Drag to steer</div>
+  <button class="hot" id="dashbtn">DASH</button>
+</div>
+
+<div class="screen" id="results">
+  <div class="panel">
+    <h1 style="font-size:2rem">Round over</h1>
+    <div class="card"><div class="plist" id="rank"></div></div>
+    <div class="row"><button class="ghost" id="rleave">Leave</button><button class="hot" id="again">Play again</button></div>
+    <div id="rwait" class="sub"></div>
+  </div>
+</div>
+
+<script src="relay.js"></script>
+<script src="sim.js"></script>
+<script src="net.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const COLORS = ["#ff3d6e", "#3dd6ff", "#ffd23d", "#6dff7a", "#c46bff", "#ff9a3d", "#ffffff", "#3d7bff"];
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+const Q = new URLSearchParams(location.search);
+const screens = ["menu", "lobby", "game", "results"];
+const show = n => screens.forEach(s => $(s).classList.toggle("on", s === n));
+$("name").value = store.get("nt-name") || "";
+if (Q.get("code")) $("code").value = Q.get("code").toUpperCase().slice(0, 6);
+
+let link = null, you = null, lobby = null, G = null, wantStart = false;
+const nm = () => { const v = $("name").value.trim().slice(0, 12); store.set("nt-name", v); return v; };
+
+// ---------- connecting
+async function go(first) {
+  $("menumsg").textContent = "";
+  await Net.ready();
+  you = null; lobby = null; wantStart = first.mode === "solo";
+  link = Net.open(first, onMsg, () => { if (link) { link = null; back("Disconnected."); } }, (kind, code) => {
+    $("status").textContent = kind === "online" ? "Online. Share the code." : kind === "reconnecting" ? "Reconnecting…" : kind === "offline" ? "Could not go online: only this device can play." : "";
+    if (kind === "recode" && lobby) { lobby.code = code; drawLobby(); }
+  });
+}
+$("solo").onclick = () => go({ t: "hello", mode: "solo", name: nm() });
+$("create").onclick = () => go({ t: "hello", mode: "create", name: nm() });
+$("join").onclick = () => { const c = $("code").value.trim().toUpperCase(); if (c.length !== 6) { $("menumsg").textContent = "Enter the 6-letter code."; return; } $("menumsg").textContent = "Looking for the arena…"; go({ t: "hello", mode: "join", code: c, name: nm() }); };
+function back(msg) { const l = link; link = null; if (l) l.close(); show("menu"); $("menumsg").textContent = msg || ""; G = null; }
+$("leave").onclick = $("rleave").onclick = () => back("");
+
+// ---------- messages
+function onMsg(m) {
+  switch (m.t) {
+    case "hi": you = m.id; break;
+    case "err": back(m.msg); break;
+    case "netwait": $("menumsg").textContent = m.msg; break;
+    case "lobby": lobby = m; if (wantStart && m.host === you) { wantStart = false; send({ t: "start" }); } drawLobby(); if (!G || m.phase === "lobby") { G = null; show("lobby"); } break;
+    case "go": startRound(m); break;
+    case "s": snapshot(m); break;
+    case "pong": { const r = performance.now() - m.c; rtt = rtt ? rtt * .7 + r * .3 : r; break; }
+    case "end": endRound(m); break;
+  }
+}
+const send = o => link && link.send(o);
+
+function drawLobby() {
+  if (!lobby) return;
+  $("lcode").textContent = lobby.solo ? "SOLO" : lobby.code;
+  $("share").style.display = lobby.solo ? "none" : "";
+  $("plist").innerHTML = lobby.players.map(p => `<div class="pl" style="color:${COLORS[p.slot]}"><i></i><span style="color:#eef0ff">${esc(p.name)}</span><em>${p.id === lobby.host ? "host" : ""}${p.id === you ? " you" : ""}${p.away ? " away" : ""}</em></div>`).join("");
+  const host = lobby.host === you;
+  $("botsrow").style.display = host ? "" : "none"; $("bn").textContent = lobby.bots;
+  $("start").disabled = !host; $("start").textContent = host ? "Start" : "Waiting for the host…";
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+$("bm").onclick = () => send({ t: "bots", v: Math.max(0, lobby.bots - 1) });
+$("bp").onclick = () => send({ t: "bots", v: lobby.bots + 1 });
+$("start").onclick = () => send({ t: "start" });
+$("share").onclick = async () => {
+  const url = location.origin + location.pathname + "?code=" + lobby.code;
+  try { if (navigator.share) await navigator.share({ title: "Neon Tag", text: "Join my Neon Tag game: " + lobby.code, url }); else { await navigator.clipboard.writeText(url); $("status").textContent = "Link copied."; } } catch (e) {}
+};
+$("again").onclick = () => send({ t: "again" });
+
+// ---------- the round
+let players = new Map(), buf = [], gap = 50, jit = 0, rtt = 0, me = null, lastIn = 0, sentX = 0, sentY = 0, sentAt = 0;
+let fxs = [], trails = new Map(), phase = "count", leftT = 60, serverIt = -1, scores = new Map(), toastT = 0, hintOff = 0, snapAt = 0;
+function startRound(m) {
+  G = m; players = new Map(m.players.map(p => [p.id, p])); buf = []; trails.clear(); fxs = []; scores.clear(); me = TagSim.fresh(m.W / 2, m.H / 2); phase = "count"; hintOff = performance.now() + 6000;
+  show("game"); resize(); $("results").classList.remove("on");
+  clearInterval(pingT); pingT = setInterval(() => send({ t: "ping", c: performance.now() }), 2000); send({ t: "ping", c: performance.now() });
+}
+let pingT = 0;
+function snapshot(m) {
+  const at = performance.now();
+  if (buf.length) { const dt = Math.min(500, at - buf[buf.length - 1].at); jit += (Math.abs(dt - gap) - jit) * .1; gap += (dt - gap) * .1; }
+  const ps = new Map(m.p.map(a => [a[0], { x: a[1], y: a[2], vx: a[3], vy: a[4], it: a[5], safe: a[6], dcd: a[7], score: a[8], dash: a[9] }]));
+  buf.push({ at, ps }); if (buf.length > 12) buf.shift();
+  phase = m.ph; leftT = m.left; snapAt = at;
+  ps.forEach((p, id) => { scores.set(id, p.score); if (p.it) serverIt = id; });
+  const s = ps.get(you);
+  if (s) {
+    if (!me.init) { me.x = s.x; me.y = s.y; me.init = true; }
+    // the host's word, brought forward by the trip it took, gently pulls our own orb back in line
+    const lead = rtt / 2000 + gap / 2000, ex = s.x + s.vx * lead, ey = s.y + s.vy * lead, err = Math.hypot(ex - me.x, ey - me.y);
+    if (err > 160) { me.x = ex; me.y = ey; } else { me.x += (ex - me.x) * .22; me.y += (ey - me.y) * .22; }
+    me.it = !!s.it; me.safe = s.safe;
+    if (Math.abs(me.dcd - s.dcd) > .35) me.dcd = s.dcd;
+  }
+  if (m.fx) m.fx.forEach(f => fxs.push({ x: f[0], y: f[1], t: at, c: COLORS[(players.get(f[2]) || {}).slot || 0] }));
+  if (m.toast) toast(m.toast);
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 1800); }
+function endRound(m) {
+  clearInterval(pingT);
+  $("rank").innerHTML = m.rank.map((r, i) => `<div class="pl" style="color:${COLORS[r.slot]}"><i></i><span style="color:#eef0ff">${i + 1}. ${esc(r.name)}${r.id === you ? " (you)" : ""}</span><em>${r.score}s</em></div>`).join("");
+  const host = lobby && lobby.host === you;
+  $("again").style.display = host ? "" : "none"; $("rwait").textContent = host ? "" : "Waiting for the host…";
+  G = G && { ...G, over: true }; show("results");
+}
+
+// ---------- input: drag to steer, Space to dash
+const cv = $("cv"), ctx = cv.getContext("2d");
+let cw = 0, ch = 0, DPR = 1, scale = 1, ox = 0, oy = 0;
+function resize() {
+  DPR = Math.min(matchMedia("(pointer: coarse)").matches ? 1.5 : 2, devicePixelRatio || 1);
+  cw = innerWidth; ch = innerHeight; cv.width = cw * DPR; cv.height = ch * DPR;
+  if (G) { scale = Math.min(cw / G.W, ch / G.H); ox = (cw - G.W * scale) / 2; oy = (ch - G.H * scale) / 2; }
+}
+addEventListener("resize", resize);
+let ptr = null; const keys = new Set();
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptr = { x: e.clientX, y: e.clientY }; e.preventDefault(); });
+cv.addEventListener("pointermove", e => { if (ptr) { ptr.x = e.clientX; ptr.y = e.clientY; } });
+const up = () => { ptr = null; }; cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+cv.addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("keydown", e => { if (!G || G.over) return; if (e.code === "Space") { e.preventDefault(); if (!e.repeat) doDash(); } else keys.add(e.code); });
+addEventListener("keyup", e => keys.delete(e.code));
+$("dashbtn").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); doDash(); });
+function wanted() {
+  let x = 0, y = 0;
+  if (ptr && me) { const mx = ox + me.x * scale, my = oy + me.y * scale, dx = ptr.x - mx, dy = ptr.y - my, d = Math.hypot(dx, dy), dead = 14; if (d > dead) { const k = Math.min(1, (d - dead) / 60); x = dx / d * k; y = dy / d * k; } }
+  else { if (keys.has("ArrowLeft") || keys.has("KeyA")) x -= 1; if (keys.has("ArrowRight") || keys.has("KeyD")) x += 1; if (keys.has("ArrowUp") || keys.has("KeyW")) y -= 1; if (keys.has("ArrowDown") || keys.has("KeyS")) y += 1; }
+  return [x, y];
+}
+function pushInput(x, y, d) {
+  const now = performance.now();
+  if (!d && now - sentAt < 33) return;                                     // at most ~30 a second
+  if (!d && Math.abs(x - sentX) < .04 && Math.abs(y - sentY) < .04 && now - sentAt < 400) return;   // only when it changes (and a heartbeat)
+  sentX = x; sentY = y; sentAt = now; send({ t: "in", x: +x.toFixed(2), y: +y.toFixed(2), d: d ? 1 : 0 });
+}
+function doDash() {
+  if (!G || !me || phase !== "play") return;
+  const [x, y] = wanted(); TagSim.aim(me, x, y);
+  if (TagSim.dash(me)) pushInput(x, y, true);
+}
+
+// ---------- drawing
+const delay = () => Math.max(90, Math.min(400, gap * 1.4 + jit * 2.5));
+function sample() {
+  if (!buf.length) return null;
+  const now = performance.now() - delay();
+  let i = buf.length - 1; while (i > 0 && buf[i - 1].at > now) i--;
+  const b1 = buf[i], b0 = buf[Math.max(0, i - 1)], span = b1.at - b0.at || 1, u = Math.max(0, Math.min(1.2, (now - b0.at) / span));
+  const out = new Map();
+  b1.ps.forEach((p, id) => { const a = b0.ps.get(id); out.set(id, a ? { ...p, x: a.x + (p.x - a.x) * u, y: a.y + (p.y - a.y) * u } : p); });
+  return out;
+}
+let lastT = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - lastT) / 1000); lastT = now;
+  if (G && !G.over && $("game").classList.contains("on")) {
+    if (phase === "play" && me) { const [x, y] = wanted(); TagSim.aim(me, x, y); TagSim.step(me, dt); pushInput(x, y, false); }
+    draw(now, dt);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+function draw(now, dt) {
+  const S = sample(); if (!S) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = "#0a0b1e"; ctx.fillRect(0, 0, cw, ch);
+  ctx.save(); ctx.translate(ox, oy); ctx.scale(scale, scale);
+  // the arena
+  ctx.fillStyle = "#10123a"; ctx.fillRect(0, 0, G.W, G.H);
+  ctx.strokeStyle = "rgba(110,120,255,.13)"; ctx.lineWidth = 1.5; ctx.beginPath();
+  for (let v = 100; v < G.W; v += 100) { ctx.moveTo(v, 0); ctx.lineTo(v, G.H); ctx.moveTo(0, v); ctx.lineTo(G.W, v); }
+  ctx.stroke();
+  const itId = [...S].find(([, p]) => p.it);
+  ctx.strokeStyle = itId ? "#ff3d6e" : "#5e6bff"; ctx.lineWidth = 6; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 18; ctx.strokeRect(0, 0, G.W, G.H); ctx.shadowBlur = 0;
+  // effects
+  fxs = fxs.filter(f => now - f.t < 600);
+  fxs.forEach(f => { const k = (now - f.t) / 600; ctx.strokeStyle = f.c; ctx.globalAlpha = 1 - k; ctx.lineWidth = 6 * (1 - k) + 1; ctx.beginPath(); ctx.arc(f.x, f.y, 20 + k * 110, 0, 6.3); ctx.stroke(); });
+  ctx.globalAlpha = 1;
+  // orbs: others from the host, ours from our own prediction
+  S.forEach((p, id) => {
+    const pl = players.get(id); if (!pl) return;
+    let x = p.x, y = p.y, it = p.it, safe = p.safe;
+    if (id === you && me) { x = me.x; y = me.y; it = me.it ? 1 : 0; safe = me.safe > 0 ? me.safe : p.safe; }
+    const col = COLORS[pl.slot];
+    let tr = trails.get(id); if (!tr) trails.set(id, tr = []);
+    tr.push(x, y); if (tr.length > 22) tr.splice(0, 2);
+    ctx.lineCap = "round";
+    for (let i = 2; i < tr.length; i += 2) { ctx.strokeStyle = col; ctx.globalAlpha = i / tr.length * .45; ctx.lineWidth = G.R * 1.3 * i / tr.length; ctx.beginPath(); ctx.moveTo(tr[i - 2], tr[i - 1]); ctx.lineTo(tr[i], tr[i + 1]); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    const g = ctx.createRadialGradient(x, y, 2, x, y, G.R * 2.6); g.addColorStop(0, col + "aa"); g.addColorStop(1, col + "00");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, G.R * 2.6, 0, 6.3); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, G.R, 0, 6.3); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x - 5, y - 5, G.R * .3, 0, 6.3); ctx.fill();
+    if (it) { ctx.strokeStyle = "#ff3d6e"; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, G.R + 7 + Math.sin(now / 90) * 3, 0, 6.3); ctx.stroke(); }
+    if (safe > 0) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(x, y, G.R + 6, now / 300, now / 300 + 6.3); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.font = "800 15px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.fillText(id === you ? "YOU" : pl.name, x, y - G.R - 14);
+  });
+  ctx.restore();
+  hud(S, now);
+}
+function hud(S, now) {
+  const left = Math.max(0, leftT - (now - snapAt) / 1000);
+  const c = $("count");
+  if (phase === "count") { c.style.display = "grid"; c.textContent = Math.max(1, Math.ceil(left)); } else if (c.style.display !== "none") { if (c.textContent !== "GO") { c.textContent = "GO"; setTimeout(() => c.style.display = "none", 450); } }
+  const t = Math.ceil(left), clock = Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+  if ($("hclock").textContent !== clock) $("hclock").textContent = clock;
+  $("hscore").textContent = (scores.get(you) || 0) + " s free";
+  const it = [...S].find(([, p]) => p.it), pl = it && players.get(it[0]);
+  $("hit").textContent = it ? (it[0] === you ? "YOU ARE IT" : pl.name + " is IT") : "";
+  const d = $("dashbtn"), ready = !(me && me.dcd > 0); d.classList.toggle("wait", !ready);
+  d.textContent = ready ? "DASH" : Math.ceil(me.dcd) + "";
+  $("hint").style.opacity = now < hintOff ? 1 : 0;
+}
+</script>
+</body>
+</html>
