@@ -101,7 +101,7 @@ def skill_at(f):
 # ---- flight
 # Circling only matters for pollinating now, so it is a steady, calm turn.
 OMEGA0 = 2.0                        # radians per second: one loop is about 3 s
-FLY_V = 320.0                       # tap a flower and the bee flies straight there at this speed
+FLY_V = 480.0                       # tap a flower and the bee flies straight there at this speed
 ORBIT_GAP = 26.0                    # orbit radius = flower radius + this
 BEE_R = 9.0
 

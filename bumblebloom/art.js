@@ -688,8 +688,8 @@ const Smooth = (() => {
         const age = performance.now() - L.at, fl = world && world.fl[L.f];
         if (!fl || age > 600 || (b.st !== 0 && b.target === L.f) || (b.st !== 0 && b.st !== 1)) launches.delete(b.id);
         else if (b.st === 0) {
-          const sx = out.x, sy = out.y, dx = fl.x - sx, dy = fl.y - sy, d = Math.hypot(dx, dy) || 1, run = Math.min(d, 320 * age / 1000);
-          out.x = sx + dx / d * run; out.y = sy + dy / d * run; out.vx = dx / d * 320; out.vy = dy / d * 320; out.st = 1; out.target = L.f;
+          const sx = out.x, sy = out.y, dx = fl.x - sx, dy = fl.y - sy, d = Math.hypot(dx, dy) || 1, run = Math.min(d, 480 * age / 1000);
+          out.x = sx + dx / d * run; out.y = sy + dy / d * run; out.vx = dx / d * 480; out.vy = dy / d * 480; out.st = 1; out.target = L.f;
         }
       }
       return out;

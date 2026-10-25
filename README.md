@@ -6,7 +6,6 @@ Browser games that run straight from GitHub Pages, no install.
 |---|---|---|
 | **Bumblebloom** | [`bumblebloom/`](bumblebloom/) | Tap-to-fly garden race for 1–8 players: pollinate flowers, grow vines, dodge predators. [Rules and how it works](bumblebloom/README.md). |
 | **The Last Garden** | [`last-garden/`](last-garden/) | Treasure race through a hedge maze for live events: three levels, tournaments up to 300, organiser view and big screen. [How it works](last-garden/README.md). |
-| **Neon Tag** | [`neontag/`](neontag/) | Fast arena tag for 1–8 players: one orb is IT, touch to pass it on, dash to escape. Your own orb moves instantly on your screen (client-side prediction), so it stays smooth online. |
 
 ## Publishing on GitHub Pages
 

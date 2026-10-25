@@ -38,7 +38,7 @@ const BloomSim = (() => {
     return { wait: [mix(a.wait[0], b.wait[0]), mix(a.wait[1], b.wait[1])], random: mix(a.random, b.random), careless: mix(a.careless, b.careless), sting: mix(a.sting, b.sting) };
   }
   const ordinal = n => ({ 1: "1st", 2: "2nd", 3: "3rd" })[n] || n + "th";
-  const OMEGA0 = 2.0, FLY_V = 320, ORBIT_GAP = 26, BEE_R = 9;
+  const OMEGA0 = 2.0, FLY_V = 480, ORBIT_GAP = 26, BEE_R = 9;
   const HP_MAX = 100, HEAL_PER_S = 7, FAINT_SECONDS = 3, FAINT_HONEY_LOSS = .15, SAFE_SECONDS = 1.5, DIZZY_SECONDS = 1.6;
   const BUMP_DMG = 10, TRAP_DMG = 35, DRAGON_DMG = 25, BIRD_DMG = 45, WEB_DPS = 18, TRAP_R = 24;
   // sting dash and fortified patches (see server.py)
