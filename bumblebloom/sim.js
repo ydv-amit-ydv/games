@@ -98,7 +98,7 @@ const BloomSim = (() => {
     constructor(code) {
       this.code = code; this.seats = new Map(); this.workers = []; this.watchers = new Set(); this.host = null; this.phase = "lobby";
       this.world = null; this.preds = []; this.fxq = []; this.toast = null; this.tEnd = 0; this.tPhase = 0; this.nextPred = 0;
-      this.predId = 0; this.tickN = 0; this.fort = new Set(); this.solo = false; this.shared = false;
+      this.predId = 0; this.tickN = 0; this.lastOwners = ""; this.ownerN = 0; this.fort = new Set(); this.solo = false; this.shared = false;
       this.botsWanted = 0; this.skill = "easy"; this.secs = ROUND_SECONDS; this.match = "single"; this.level = 0; this.lastEnd = null; this.nextId = 1;
       this.skillF = 0; this.nextSprout = 0; this.sproutGap = 10; this.nextAdapt = 0; this.sproutTold = false; this.aspect = null;
       let last = performance.now() / 1000, acc = 0;
@@ -146,6 +146,7 @@ const BloomSim = (() => {
         bees: this.sorted().filter(s => !s.bot).map(s => ({ id: s.id, slot: s.slot, name: this.label(s), bot: s.bot, away: s.gone != null, auto: s.auto })) };
     }
     worldMsg() {
+      this.lastOwners = "";     // the next snapshot carries the owners, for a new round or a player just joining
       const wd = this.world;
       // open flowers first, then the ones still to sprout (the state's owner list says how many are open)
       return { W: wd.W, H: wd.H, seed: wd.seed, link: wd.link, trap: wd.trap, flowers: wd.flowers.concat(wd.dormant).map(f => [f.x, f.y, f.r]), open: wd.flowers.length,
@@ -158,9 +159,10 @@ const BloomSim = (() => {
       const st = { orbit: 0, fly: 1, dizzy: 2, faint: 3 };
       const msg = { t: "s", left: this.phase === "play" ? r1(Math.max(0, this.tEnd - now)) : this.secs, ph: this.phase,
         b: this.workers.map(w => { const s = w.seat; return [w.id, r1(w.x), r1(w.y), r3(w.ang), st[w.state], Math.round(w.hp), Math.floor(s.score), r2(w.prog), w.f, w.dir, r1(w.rad), r1(w.vx), r1(w.vy), w.safe > 0 ? 1 : 0, r2(w.v), w.target == null || w.state !== "fly" ? -1 : w.target, w.sting ? 1 : 0, s.stingArmed ? 1 : 0, r1(w.stingCd), s.id, Math.floor(s.total)]; }),
-        o: this.world.flowers.map(f => f.owner),
         p: this.preds.map(p => p.k === "dragon" ? ["d", Math.round(p.x), Math.round(p.y), r2(Math.atan2(p.vy, p.vx)), p.id]
           : p.k === "bird" ? ["b", Math.round(p.x), Math.round(p.y), r2(p.age / BIRD_WARN), p.id] : ["s", p.f, 0, r2(p.age), r2(p.life)]) };
+      const o = this.world.flowers.map(f => f.owner), key = o.join();
+      if (key !== this.lastOwners || ++this.ownerN >= 20) { msg.o = o; this.lastOwners = key; this.ownerN = 0; }
       if (this.fxq.length) { msg.fx = this.fxq; this.fxq = []; }
       if (this.toast) { msg.toast = this.toast; this.toast = null; }
       return msg;

@@ -93,9 +93,10 @@ const Relay = (() => {
       this.ws.send(packet(0x82, concat([Uint8Array.of(id >> 8, id & 255), str(topic), Uint8Array.of(0)])));
     }
     subscribe(topic) { if (this.subs.has(topic)) return; this.subs.add(topic); if (this.up) this.sendSub(topic); }
-    publish(topic, text) {
+    // lossy: a snapshot that would wait behind a backlog is dropped, since the next one replaces it (a backlog is what turns a slow link into lag)
+    publish(topic, text, lossy) {
       const p = packet(0x30, concat([str(topic), enc.encode(text)]));
-      if (this.up) { if (this.ws.bufferedAmount < 2e6) this.ws.send(p); }
+      if (this.up) { if (this.ws.bufferedAmount < (lossy ? 16e3 : 2e6)) this.ws.send(p); }
       else if (this.queue.length < 50) this.queue.push(p);
     }
     close() { this.dead = true; this.up = false; clearInterval(this.ping); try { this.ws && this.ws.close(); } catch (e) {} }
@@ -112,11 +113,11 @@ const Relay = (() => {
       const items = [...pend]; pend.clear();
       for (const [msg, set] of items) {
         const out = o.thin ? o.thin(msg) : msg; if (!out) continue;
-        const text = JSON.stringify(out);
+        const text = JSON.stringify(out), lossy = out.t === "s";
         clients.forEach(c => {
           const to = [...set].filter(g => g.c === c), all = [...guests.values()].filter(g => g.c === c && g.open);
-          if (to.length > 1 && to.length === all.length) c.publish(base + "/all", text);
-          else to.forEach(g => c.publish(base + "/g/" + g.id, text));
+          if (to.length > 1 && to.length === all.length) c.publish(base + "/all", text, lossy);
+          else to.forEach(g => c.publish(base + "/g/" + g.id, text, lossy));
         });
       }
     };

@@ -652,17 +652,18 @@ const Garden = (() => {
 
 /* Network snapshots arrive 20 times a second; this smooths them out. */
 const Smooth = (() => {
-  let buf = [], gap = 50;
-  // play this far behind the newest snapshot: 110 ms at 20 a second, more when they come slower (the relay sends 10)
-  const delay = () => Math.max(110, Math.min(400, gap * 2.2));
+  let buf = [], gap = 50, jit = 0, owners = [];
+  // play this far behind the newest snapshot: one gap plus a margin for jitter, so a steady link stays close to live and a wobbly one still looks smooth
+  const delay = () => Math.max(90, Math.min(400, gap * 1.4 + jit * 2.5));
   function push(m, world) {
     const bees = m.b.map(a => ({ id: a[0], x: a[1], y: a[2], ang: a[3], st: a[4], hp: a[5], score: a[6], prog: a[7], f: a[8], dir: a[9], rad: a[10], vx: a[11], vy: a[12], safe: a[13], v: a[14], target: a[15], sting: a[16], armed: a[17], stingCd: a[18], seat: a[19], total: a[20] }));
     const at = performance.now();
-    if (buf.length) gap += (Math.min(500, at - buf[buf.length - 1].at) - gap) * .1;
+    if (buf.length) { const dt = Math.min(500, at - buf[buf.length - 1].at); jit += (Math.abs(dt - gap) - jit) * .1; gap += (dt - gap) * .1; }
+    if (m.o) owners = m.o; else m.o = owners;      // owners are sent only when they change
     buf.push({ at, m, bees });
     if (buf.length > 12) buf.shift();
   }
-  function reset() { buf = []; }
+  function reset() { buf = []; owners = []; }
   function sample(world, info) {
     if (!buf.length) return null;
     const now = performance.now() - delay();
